@@ -1,0 +1,250 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function adminUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+    }
+
+    function isActiveAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.token.email))
+        && adminUser().status == 'active';
+    }
+
+    function isSuperAdmin() {
+      return isActiveAdmin() && adminUser().role == 'Super Admin';
+    }
+
+    function isTrainer() {
+      return isActiveAdmin() && adminUser().role in ['Trainer', 'Teaching Team'];
+    }
+
+    function isAdminNotTrainer() {
+      return isActiveAdmin() && !isTrainer();
+    }
+
+    function isStudentOwner(studentId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/students/$(studentId))
+        && get(/databases/$(database)/documents/students/$(studentId)).data.uid == request.auth.uid;
+    }
+
+    // ─── Staff users ─────────────────────────────────────────────
+    match /users/{email} {
+      allow read: if isActiveAdmin() || (isSignedIn() && request.auth.token.email == email);
+      allow write: if isSuperAdmin();
+    }
+
+    match /approval_requests/{id} {
+      allow read: if isActiveAdmin();
+      allow create: if isAdminNotTrainer();
+      allow update: if isSuperAdmin();
+    }
+
+    match /audit_logs/{id} {
+      allow read: if isSuperAdmin();
+      allow create: if isActiveAdmin();
+    }
+
+    // ─── Students ────────────────────────────────────────────────
+    match /students/{studentId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow create: if isAdminNotTrainer();
+      allow update: if isAdminNotTrainer()
+        || (isStudentOwner(studentId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['preferences', 'updatedAt', 'mustChangePassword']));
+      allow delete: if isSuperAdmin();
+    }
+
+    match /students/{studentId}/enrollments/{courseId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isAdminNotTrainer();
+    }
+
+    match /students/{studentId}/fees/{docId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isSuperAdmin();
+    }
+
+    match /students/{studentId}/certificates/{certId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isAdminNotTrainer();
+    }
+
+    match /students/{studentId}/notifications/{notifId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow create: if isAdminNotTrainer();
+      allow update: if isAdminNotTrainer()
+        || (isStudentOwner(studentId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']));
+      allow delete: if isAdminNotTrainer();
+    }
+
+    match /students/{studentId}/tests/{testId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow create, update: if isAdminNotTrainer()
+        || (isStudentOwner(studentId)
+            && request.resource.data.status in ['pending', 'completed', 'in_progress']);
+      allow delete: if isAdminNotTrainer();
+    }
+
+    match /students/{studentId}/testHistory/{entryId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow create: if isAdminNotTrainer() || isStudentOwner(studentId);
+      allow update, delete: if isAdminNotTrainer();
+    }
+
+    match /students/{studentId}/attendance/{courseId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isActiveAdmin();
+    }
+
+    match /students/{studentId}/classes/{classId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isActiveAdmin();
+    }
+
+    match /students/{studentId}/assignments/{assignmentId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isActiveAdmin();
+    }
+
+    match /students/{studentId}/recordings/{recordingId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isActiveAdmin();
+    }
+
+    match /students/{studentId}/progress/{docId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isActiveAdmin();
+    }
+
+    match /students/{studentId}/{subcollection}/{docId} {
+      allow read: if isActiveAdmin() || isStudentOwner(studentId);
+      allow write: if isAdminNotTrainer();
+    }
+
+    // ─── Fees ────────────────────────────────────────────────────
+    match /student_fees/{feeId} {
+      allow read: if isAdminNotTrainer() || isStudentOwner(feeId);
+      allow write: if isSuperAdmin();
+    }
+
+    // ─── Courses (public catalog) ────────────────────────────────
+    match /courses/{courseId} {
+      allow read: if true;
+      allow write: if isAdminNotTrainer();
+      match /topics/{topicId} {
+        allow read: if true;
+        allow write: if isAdminNotTrainer();
+      }
+    }
+
+    // ─── Batches (students read for schedules) ───────────────────
+    match /batches/{batchId} {
+      allow read: if isActiveAdmin() || isSignedIn();
+      allow write: if isAdminNotTrainer();
+    }
+
+    // ─── Certificates (public verify) ────────────────────────────
+    match /certificates/{certId} {
+      allow read: if true;
+      allow write: if isAdminNotTrainer();
+    }
+
+    // ─── Institute tests (students read catalog) ─────────────────
+    match /institute_tests/{testId} {
+      allow read: if isActiveAdmin() || isSignedIn();
+      allow write: if isAdminNotTrainer();
+    }
+
+    match /test_attempts/{attemptId} {
+      allow read: if isActiveAdmin()
+        || (isSignedIn() && resource.data.studentId != null
+            && isStudentOwner(resource.data.studentId));
+      allow create: if isSignedIn();
+      allow update: if isActiveAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    match /test_assignments/{id} {
+      allow read, write: if isAdminNotTrainer();
+    }
+
+    match /question_bank/{id} {
+      allow read: if isActiveAdmin();
+      allow write: if isAdminNotTrainer();
+    }
+
+    // ─── Enquiries (students can submit) ─────────────────────────
+    match /course_enquiries/{id} {
+      allow read: if isAdminNotTrainer();
+      allow create: if true;
+      allow update, delete: if isAdminNotTrainer();
+    }
+
+    match /enquiries/{id} {
+      allow read: if isAdminNotTrainer();
+      allow create: if true;
+      allow update, delete: if isAdminNotTrainer();
+    }
+
+    // ─── Leave requests ──────────────────────────────────────────
+    match /leave_requests/{id} {
+      allow read: if isActiveAdmin()
+        || (isSignedIn() && resource.data.studentId != null
+            && isStudentOwner(resource.data.studentId));
+      allow create: if isSignedIn();
+      allow update: if isActiveAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── App config (legal, contact — public read) ───────────────
+    match /appConfig/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // ─── Admissions, classes, attendance, etc. (admin only) ──────
+    match /admissions/{id} {
+      allow read, write: if isAdminNotTrainer();
+    }
+
+    match /class_sessions/{id} {
+      allow read: if isActiveAdmin() || isSignedIn();
+      allow write: if isActiveAdmin();
+    }
+
+    match /attendance_records/{id} {
+      allow read, write: if isActiveAdmin();
+    }
+
+    match /assignments/{id} {
+      allow read: if isActiveAdmin() || isSignedIn();
+      allow write: if isActiveAdmin();
+    }
+
+    match /recordings/{id} {
+      allow read: if isActiveAdmin() || isSignedIn();
+      allow write: if isActiveAdmin();
+    }
+
+    match /study_materials/{id} {
+      allow read: if isActiveAdmin() || isSignedIn();
+      allow write: if isActiveAdmin();
+    }
+
+    match /metadata/{id} {
+      allow read: if isActiveAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // Default deny — no catch-all
+  }
+}

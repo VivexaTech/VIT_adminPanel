@@ -2,12 +2,18 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { ToastProvider } from "@/context/ToastContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Vivexa Institute of Technology - Admin",
-  description: "Secure Admin Panel for Vivexa Institute of Technology",
+  title: {
+    default: "Vivexa Admin",
+    template: "%s | Vivexa Admin",
+  },
+  description: "Vivexa Admin — Enterprise management portal for Vivexa Institute of Technology",
+  applicationName: "Vivexa Admin",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
@@ -16,10 +22,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.className} h-full antialiased dark`}>
-      <body className="min-h-full flex flex-col bg-[#050B14] text-white">
+    <html lang="en" className={`${inter.className} h-full antialiased`}>
+      <body className="min-h-full flex flex-col bg-[#F4F6FA] text-slate-900">
         <AuthProvider>
-          {children}
+          <ToastProvider>{children}</ToastProvider>
         </AuthProvider>
       </body>
     </html>

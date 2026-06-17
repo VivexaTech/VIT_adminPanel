@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { subscribeToSettings, DEFAULT_SETTINGS } from "@/lib/settingsService";
 import { generateReceiptId } from "@/lib/firebaseUtils";
+import type { InstituteSettings } from "@/types/erp";
 import { ArrowLeft, Printer, Download, CreditCard, Calendar, ShieldCheck, MapPin } from "lucide-react";
 
 export default function StudentFeeDetails() {
@@ -19,6 +21,12 @@ export default function StudentFeeDetails() {
   // Receipt generation state
   const [printingReceipt, setPrintingReceipt] = useState<any>(null);
   const [receiptNumber, setReceiptNumber] = useState<string>("");
+  const [instituteSettings, setInstituteSettings] = useState<InstituteSettings>(DEFAULT_SETTINGS);
+
+  useEffect(() => {
+    const unsub = subscribeToSettings(setInstituteSettings);
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -67,17 +75,17 @@ export default function StudentFeeDetails() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen bg-[#050B14]">
-        <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="flex justify-center items-center h-screen">
+        <div className="w-12 h-12 border-4 border-[#6C3CE9] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   if (!feeRecord) {
     return (
-      <div className="p-8 text-center bg-[#050B14] min-h-screen text-white">
-        <h2 className="text-2xl font-bold text-red-400">Fee Record Not Found</h2>
-        <button onClick={() => router.push('/secure-admin/fees')} className="mt-4 px-4 py-2 bg-cyan-600 rounded-xl">Go Back</button>
+      <div className="p-8 text-center min-h-[60vh]">
+        <h2 className="text-xl sm:text-2xl font-bold text-red-600">Fee Record Not Found</h2>
+        <button type="button" onClick={() => router.push("/secure-admin/fees")} className="mt-4 px-4 py-2.5 brand-gradient text-white rounded-xl">Go Back</button>
       </div>
     );
   }
@@ -89,7 +97,7 @@ export default function StudentFeeDetails() {
       <div className="no-print min-h-[80vh]">
         <button 
           onClick={() => router.push('/secure-admin/fees')}
-          className="flex items-center gap-2 text-gray-400 hover:text-cyan-400 mb-6 transition-colors"
+          className="flex items-center gap-2 text-slate-500 hover:text-[#6C3CE9] mb-6 transition-colors"
         >
           <ArrowLeft size={16} /> Back to Fees
         </button>
@@ -97,40 +105,39 @@ export default function StudentFeeDetails() {
         <div className="flex flex-col md:flex-row gap-6">
           {/* Left Column: Student Details & Progress */}
           <div className="w-full md:w-1/3 space-y-6">
-            <div className="glass-panel p-6 rounded-2xl border border-cyan-500/20">
+            <div className="glass-card p-4 sm:p-6 rounded-2xl">
               <div className="flex items-center gap-4 mb-6">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-2xl font-bold shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full brand-gradient flex items-center justify-center text-xl sm:text-2xl font-bold text-white shadow-sm shrink-0">
                   {feeRecord.studentName.charAt(0)}
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-white">{feeRecord.studentName}</h2>
-                  <p className="text-cyan-400 font-mono text-sm">{feeRecord.studentId}</p>
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-xl font-bold text-slate-900 truncate">{feeRecord.studentName}</h2>
+                  <p className="text-[#6C3CE9] font-mono text-sm">{feeRecord.studentId}</p>
                 </div>
               </div>
-              
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between border-b border-white/5 pb-2">
-                  <span className="text-gray-400">Course</span>
-                  <span className="text-white font-medium">{feeRecord.course}</span>
+                <div className="flex justify-between gap-2 border-b border-slate-100 pb-2">
+                  <span className="text-slate-500 shrink-0">Course</span>
+                  <span className="text-slate-900 font-medium text-right">{feeRecord.course}</span>
                 </div>
                 {studentDetails && (
                   <>
-                    <div className="flex justify-between border-b border-white/5 pb-2">
-                      <span className="text-gray-400">Phone</span>
-                      <span className="text-white">{studentDetails.phone}</span>
+                    <div className="flex justify-between border-b border-slate-100 pb-2">
+                      <span className="text-slate-500">Phone</span>
+                      <span className="text-slate-900">{studentDetails.phone}</span>
                     </div>
-                    <div className="flex justify-between border-b border-white/5 pb-2">
-                      <span className="text-gray-400">Join Date</span>
-                      <span className="text-white">{studentDetails.joinDate}</span>
+                    <div className="flex justify-between border-b border-slate-100 pb-2">
+                      <span className="text-slate-500">Join Date</span>
+                      <span className="text-slate-900">{studentDetails.joinDate}</span>
                     </div>
                   </>
                 )}
                 <div className="flex justify-between pt-2">
-                  <span className="text-gray-400">Status</span>
+                  <span className="text-slate-500">Status</span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                    feeRecord.paymentStatus === 'Paid' ? 'bg-emerald-500/10 text-emerald-400' : 
-                    feeRecord.paymentStatus === 'Partial' ? 'bg-cyan-500/10 text-cyan-400' :
-                    'bg-red-500/10 text-red-400'
+                    feeRecord.paymentStatus === "Paid" ? "bg-emerald-100 text-emerald-700" :
+                    feeRecord.paymentStatus === "Partial" ? "bg-blue-100 text-blue-700" :
+                    "bg-red-100 text-red-700"
                   }`}>
                     {feeRecord.paymentStatus}
                   </span>
@@ -138,72 +145,65 @@ export default function StudentFeeDetails() {
               </div>
             </div>
 
-            <div className="glass-panel p-6 rounded-2xl border border-cyan-500/20">
-              <h3 className="text-lg font-bold text-white mb-4">Payment Progress</h3>
-              
-              <div className="flex justify-between items-end mb-2">
+            <div className="glass-card p-4 sm:p-6 rounded-2xl">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Payment Progress</h3>
+              <div className="flex justify-between items-end mb-2 gap-4">
                 <div>
-                  <p className="text-gray-400 text-xs">Total Fee</p>
-                  <p className="text-white font-bold text-xl">{formatCurrency(feeRecord.totalFee)}</p>
+                  <p className="text-slate-500 text-xs">Total Fee</p>
+                  <p className="text-slate-900 font-bold text-lg sm:text-xl">{formatCurrency(feeRecord.totalFee)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-gray-400 text-xs">Paid</p>
-                  <p className="text-emerald-400 font-bold text-xl">{formatCurrency(feeRecord.paidAmount)}</p>
+                  <p className="text-slate-500 text-xs">Paid</p>
+                  <p className="text-emerald-600 font-bold text-lg sm:text-xl">{formatCurrency(feeRecord.paidAmount)}</p>
                 </div>
               </div>
-              
-              <div className="w-full h-3 bg-[#050B14] rounded-full overflow-hidden mb-4 border border-white/5">
-                <div 
-                  className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full transition-all duration-1000"
-                  style={{ width: `${progressPercentage}%` }}
-                ></div>
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden mb-4">
+                <div className="h-full brand-gradient rounded-full transition-all duration-1000" style={{ width: `${progressPercentage}%` }} />
               </div>
-              
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">{progressPercentage}% Complete</span>
-                <span className="text-red-400 font-medium">Due: {formatCurrency(feeRecord.remainingFee)}</span>
+              <div className="flex flex-col sm:flex-row sm:justify-between gap-1 text-sm">
+                <span className="text-slate-500">{progressPercentage}% Complete</span>
+                <span className="text-red-600 font-medium">Due: {formatCurrency(feeRecord.remainingFee)}</span>
               </div>
             </div>
           </div>
 
           {/* Right Column: History */}
           <div className="w-full md:w-2/3">
-            <div className="glass-panel p-6 rounded-2xl border border-cyan-500/20 h-full">
-              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                <Calendar className="text-cyan-400" size={20} /> Transaction History
+            <div className="glass-card p-4 sm:p-6 rounded-2xl h-full">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+                <Calendar className="text-[#6C3CE9]" size={20} /> Transaction History
               </h3>
               
               {feeRecord.installments && feeRecord.installments.length > 0 ? (
-                <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-cyan-500/50 before:to-transparent">
+                <div className="space-y-4 sm:space-y-6">
                   {feeRecord.installments.map((inst: any, idx: number) => (
-                    <div key={idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-[#0A1121] bg-cyan-500 text-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                        <CreditCard size={16} />
-                      </div>
-                      
-                      <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl glass-card border border-cyan-500/30 group-hover:border-cyan-400 transition-colors">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-bold text-lg text-white">{formatCurrency(inst.amount)}</h4>
-                          <span className="text-xs text-gray-400 bg-[#050B14] px-2 py-1 rounded-md">{new Date(inst.date).toLocaleDateString()}</span>
+                    <div key={idx} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:border-[#6C3CE9]/30 transition-colors">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-9 h-9 rounded-full brand-gradient flex items-center justify-center text-white shrink-0">
+                            <CreditCard size={14} />
+                          </div>
+                          <h4 className="font-bold text-lg text-slate-900">{formatCurrency(inst.amount)}</h4>
                         </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-cyan-400">{inst.method}</span>
-                          <span className="text-gray-500 font-mono text-xs">{inst.transactionId}</span>
-                        </div>
-                        {inst.note && <p className="text-xs text-gray-400 mt-2 pt-2 border-t border-white/5">{inst.note}</p>}
-                        
-                        <button 
-                          onClick={() => handlePrintReceipt(inst)}
-                          className="mt-4 w-full flex justify-center items-center gap-2 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-lg text-sm transition-colors border border-blue-500/30"
-                        >
-                          <Printer size={14} /> Generate Receipt
-                        </button>
+                        <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded-md border border-slate-200 self-start">{new Date(inst.date).toLocaleDateString()}</span>
                       </div>
+                      <div className="flex flex-col sm:flex-row sm:justify-between gap-1 text-sm">
+                        <span className="text-[#6C3CE9]">{inst.method}</span>
+                        <span className="text-slate-400 font-mono text-xs break-all">{inst.transactionId}</span>
+                      </div>
+                      {inst.note && <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-200">{inst.note}</p>}
+                      <button
+                        type="button"
+                        onClick={() => handlePrintReceipt(inst)}
+                        className="mt-4 w-full flex justify-center items-center gap-2 py-2.5 bg-violet-50 hover:bg-violet-100 text-[#6C3CE9] rounded-xl text-sm transition-colors border border-violet-200"
+                      >
+                        <Printer size={14} /> Generate Receipt
+                      </button>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 text-gray-400">
+                <div className="text-center py-12 text-slate-400">
                   <p>No transactions recorded yet.</p>
                 </div>
               )}
@@ -225,7 +225,7 @@ export default function StudentFeeDetails() {
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900 m-0 leading-tight">Vivexa Institute of Technology</h1>
                   <p className="text-sm text-gray-500 m-0 flex items-center gap-1 mt-1"><MapPin size={12} /> Gurugram, Haryana, India</p>
-                  <p className="text-sm text-gray-500 m-0">contact@vivexatech.in | +91 9876543210</p>
+                  <p className="text-sm text-gray-500 m-0">{instituteSettings.email} | {instituteSettings.phone}</p>
                 </div>
               </div>
               <div className="text-right">

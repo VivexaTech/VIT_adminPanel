@@ -3,15 +3,20 @@
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: #6c3ce9;
+  --color-primary-light: #ede7ff;
+  --color-primary-dark: #4a1fb8;
 }
 
 @layer base {
   :root {
-    --background: #050B14;
-    --foreground: #ffffff;
-    
-    --glow-blue: rgba(6, 182, 212, 0.5);
-    --glow-cyan: rgba(34, 211, 238, 0.5);
+    --background: #f4f6fa;
+    --foreground: #0f172a;
+    --primary: #6c3ce9;
+    --primary-light: #ede7ff;
+    --primary-dark: #4a1fb8;
+    --surface: #ffffff;
+    --border: #e2e8f0;
   }
 
   body {
@@ -20,43 +25,65 @@
     min-height: 100vh;
     overflow-x: hidden;
   }
-  
-  /* Custom Scrollbar */
+
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: #0A1121;
+    background: #f1f5f9;
   }
   ::-webkit-scrollbar-thumb {
-    background: #1e3a5f;
+    background: #cbd5e1;
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #06b6d4;
+    background: #6c3ce9;
   }
 }
 
 @layer utilities {
   .glass-card {
-    @apply bg-white/5 backdrop-blur-lg border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)];
+    @apply bg-white border border-slate-200/80 shadow-sm rounded-2xl;
   }
-  
+
   .glass-panel {
-    @apply bg-[#0A1121]/80 backdrop-blur-xl border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.1)];
+    @apply bg-white border border-slate-200 shadow-sm;
   }
 
-  .text-glow {
-    text-shadow: 0 0 10px var(--glow-cyan);
+  .brand-gradient {
+    @apply bg-gradient-to-r from-[#6C3CE9] to-[#9B5DE5];
   }
 
-  .box-glow {
-    box-shadow: 0 0 20px var(--glow-blue);
+  .brand-text {
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-[#6C3CE9] to-[#9B5DE5];
+  }
+
+  /* Admin responsive shell */
+  .admin-page {
+    @apply w-full min-w-0 max-w-[1600px] mx-auto;
+  }
+
+  .admin-card-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4;
+  }
+
+  /* Touch-friendly horizontal scroll for tables */
+  .admin-table-scroll {
+    @apply overflow-x-auto overscroll-x-contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Stack action buttons on narrow screens */
+  .admin-actions-stack {
+    @apply flex flex-col sm:flex-row gap-2 w-full sm:w-auto;
+  }
+
+  .admin-actions-stack > * {
+    @apply w-full sm:w-auto justify-center;
   }
 }
 
-/* Print Styles for Receipts */
 @media print {
   @page {
     margin: 0;
@@ -70,15 +97,13 @@
     overflow: visible;
   }
 
-  /* Hide Admin UI elements during print */
-  aside, 
-  header, 
+  aside,
+  header,
   .no-print,
-  div[class*="blur-[120px]"] { /* Background gradients */
+  div[class*="blur-"] {
     display: none !important;
   }
 
-  /* Target the specific receipt container to take full page */
   .print-receipt-container {
     position: absolute;
     top: 0;
@@ -91,14 +116,12 @@
     border: none !important;
     color: black !important;
   }
-  
-  /* Force dark elements to be visible on white background for printing */
+
   .print-receipt-container * {
     color: black !important;
-    border-color: #e5e7eb !important; /* light gray for borders */
+    border-color: #e5e7eb !important;
   }
-  
-  /* Specific styling overrides for print readability */
+
   .print-receipt-container .print-text-gray {
     color: #4b5563 !important;
   }

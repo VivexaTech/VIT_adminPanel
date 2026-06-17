@@ -11,8 +11,8 @@ const COLORS = ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="glass-panel p-3 border border-cyan-500/30 rounded-xl text-sm">
-        <p className="text-white font-medium mb-1">{label}</p>
+      <div className="glass-card p-3 border border-slate-200 rounded-xl text-sm shadow-sm">
+        <p className="text-slate-900 font-medium mb-1">{label}</p>
         {payload.map((entry: any, index: number) => (
           <p key={index} style={{ color: entry.color }}>
             {entry.name}: {entry.value}
@@ -94,20 +94,19 @@ export default function AnalyticsPage() {
 
   return (
     <PageTransition>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white mb-1">Analytics Overview</h1>
-        <p className="text-gray-400 text-sm">Visual metrics of institute performance powered by live data.</p>
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1">Analytics Overview</h1>
+        <p className="text-slate-500 text-sm">Visual metrics of institute performance powered by live data.</p>
       </div>
 
       {loading ? (
         <div className="flex justify-center items-center h-64">
-          <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-12 h-12 border-4 border-[#6C3CE9] border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : mounted && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Admissions Trend */}
-          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/20">
-            <h2 className="text-lg font-bold text-white mb-6">Admissions Growth (6 Months)</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div className="glass-card p-4 sm:p-6 rounded-2xl">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 mb-4 sm:mb-6">Admissions Growth (6 Months)</h2>
             <div className="h-[300px] w-full">
               {admissionsData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -127,14 +126,14 @@ export default function AnalyticsPage() {
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-500">No admission data available</div>
+                <div className="w-full h-full flex items-center justify-center text-slate-400">No admission data available</div>
               )}
             </div>
           </div>
 
           {/* Course Popularity Bar */}
-          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/20">
-            <h2 className="text-lg font-bold text-white mb-6">Course Popularity</h2>
+          <div className="glass-card p-4 sm:p-6 rounded-2xl">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 mb-4 sm:mb-6">Course Popularity</h2>
             <div className="h-[300px] w-full">
               {coursePopularity.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -151,14 +150,14 @@ export default function AnalyticsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-500">No student data available</div>
+                <div className="w-full h-full flex items-center justify-center text-slate-400">No student data available</div>
               )}
             </div>
           </div>
 
           {/* Certificates Distribution Pie */}
-          <div className="glass-panel p-6 rounded-2xl border border-cyan-500/20 lg:col-span-2">
-            <h2 className="text-lg font-bold text-white mb-6">Student Distribution</h2>
+          <div className="glass-card p-4 sm:p-6 rounded-2xl lg:col-span-2">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 mb-4 sm:mb-6">Student Distribution</h2>
             <div className="h-[300px] w-full flex justify-center">
               {coursePopularity.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -182,7 +181,7 @@ export default function AnalyticsPage() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-500">No student data available</div>
+                <div className="w-full h-full flex items-center justify-center text-slate-400">No student data available</div>
               )}
             </div>
           </div>

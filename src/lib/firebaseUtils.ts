@@ -63,6 +63,31 @@ export const generateReceiptId = async (): Promise<string> => {
  * Safely generates an auto-incremented Student ID.
  * Format: ST[XXX] (e.g., ST001, ST002)
  */
+/**
+ * Auto-incremented Course ID.
+ * Format: VXC-001, VXC-002
+ */
+export const generateCourseId = async (): Promise<string> => {
+  const counterRef = doc(db, "metadata", "global_course_counter");
+
+  try {
+    const newCount = await runTransaction(db, async (transaction) => {
+      const counterDoc = await transaction.get(counterRef);
+      let count = 1;
+      if (counterDoc.exists()) {
+        count = (counterDoc.data().count || 0) + 1;
+      }
+      transaction.set(counterRef, { count }, { merge: true });
+      return count;
+    });
+
+    return `VXC-${newCount.toString().padStart(3, "0")}`;
+  } catch (error) {
+    console.error("Error generating Course ID:", error);
+    throw new Error("Failed to generate Course ID");
+  }
+};
+
 export const generateStudentId = async (): Promise<string> => {
   const counterRef = doc(db, "metadata", `global_student_counter`);
 
