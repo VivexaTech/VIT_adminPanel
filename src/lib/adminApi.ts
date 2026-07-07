@@ -33,7 +33,6 @@ export type CreateStudentPayload = {
   course: string;
   courseId?: string;
   batch?: string;
-  rollNumber?: string;
   status?: string;
 };
 
@@ -47,7 +46,7 @@ export type CreateAdmissionPayload = {
   courseId: string;
   courseTitle: string;
   batch?: string;
-  rollNumber?: string;
+  batchId?: string;
   qualification?: string;
   address?: string;
   city?: string;
@@ -104,6 +103,28 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  seedCategories: () =>
+    adminFetch("/api/admin/categories/seed", { method: "POST" }),
+
+  fetchCategories: () => adminFetch("/api/admin/categories"),
+
+  createCategory: (payload: { name: string; iconName?: string; order?: number; active?: boolean }) =>
+    adminFetch("/api/admin/categories", { method: "POST", body: JSON.stringify(payload) }),
+
+  updateCategory: (payload: { id: string; name?: string; iconName?: string; order?: number; active?: boolean }) =>
+    adminFetch("/api/admin/categories", { method: "PATCH", body: JSON.stringify(payload) }),
+
+  deleteCategory: (id: string) =>
+    adminFetch(`/api/admin/categories?id=${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  sendFeeReceiptEmail: (payload: {
+    to: string;
+    studentName: string;
+    receiptHtml: string;
+    receiptNo: string;
+  }) =>
+    adminFetch("/api/admin/fees/receipt", { method: "POST", body: JSON.stringify(payload) }),
 
   createStudent: (payload: CreateStudentPayload) =>
     adminFetch("/api/admin/students", {

@@ -16,7 +16,6 @@ export type StudentFormData = {
   course: string;
   courseId: string;
   batch: string;
-  rollNumber: string;
   status: string;
   enrolledCourses: string[];
 };
@@ -41,7 +40,6 @@ const EMPTY: StudentFormData = {
   course: "",
   courseId: "",
   batch: "",
-  rollNumber: "",
   status: "Active",
   enrolledCourses: [],
 };
@@ -73,7 +71,6 @@ export default function StudentFormModal({
         course: initial.course || "",
         courseId: initial.courseId || "",
         batch: initial.batch || "",
-        rollNumber: initial.rollNumber || "",
         status: initial.status || "Active",
         enrolledCourses: initial.enrolledCourses || (initial.course ? [initial.course] : []),
       });
@@ -147,14 +144,6 @@ export default function StudentFormModal({
               disabled={mode === "edit"}
               onChange={(e) => setForm({ ...form, studentId: e.target.value.toUpperCase() })}
               placeholder="ST001"
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Roll Number</label>
-            <input
-              className={inputClass}
-              value={form.rollNumber}
-              onChange={(e) => setForm({ ...form, rollNumber: e.target.value })}
             />
           </div>
           <div className="sm:col-span-2">

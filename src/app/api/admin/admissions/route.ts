@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
-import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { getAdminAuth, getAdminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { generateSecurePassword } from "@/lib/passwordUtils";
 import { logServerAudit } from "@/lib/serverAudit";
+import { validateFeePayment, getRemainingFee, getPayableFee } from "@/lib/feeValidation";
+import {
+  formatStudentId,
+  buildStudentLoginEmail,
+  generateSixDigitPassword,
+} from "@/lib/studentIdUtils";
+import { sendStudentCredentialsEmail, isEmailConfigured } from "@/lib/emailService";
 
 function buildEnrollment(
   courseId: string,
@@ -29,6 +36,18 @@ function buildEnrollment(
 }
 
 export async function POST(request: NextRequest) {
+  if (!isAdminConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          "Server configuration error: Firebase Admin SDK is not set up. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY to your environment.",
+      },
+      { status: 503 }
+    );
+  }
+
+  let createdAuthUid: string | null = null;
+
   try {
     const performer = await verifyAdminNotTrainerRequest(request);
     const body = await request.json();
@@ -44,7 +63,6 @@ export async function POST(request: NextRequest) {
       courseTitle,
       batch,
       batchId,
-      rollNumber,
       qualification,
       address,
       city,
@@ -61,11 +79,22 @@ export async function POST(request: NextRequest) {
 
     const parent = parentName || fatherName || "";
     const course = courseTitle?.trim();
-    const emailLower = email?.trim().toLowerCase();
+    const personalEmail = email?.trim().toLowerCase();
 
-    if (!fullName?.trim() || !emailLower || !phone?.trim() || !course || !courseId) {
-      return NextResponse.json({ error: "Name, email, phone, and course are required." }, { status: 400 });
+    if (!fullName?.trim() || !personalEmail || !phone?.trim() || !course || !courseId) {
+      return NextResponse.json({ error: "Name, personal email, phone, and course are required." }, { status: 400 });
     }
+
+    const totalFee = Number(totalCourseFee) || 0;
+    const paidAmount = Number(admissionFeePaid) || 0;
+    const discountNum = Number(discount) || 0;
+    const feeError = validateFeePayment({ totalFee, discount: discountNum, paidAmount });
+    if (feeError) {
+      return NextResponse.json({ error: feeError }, { status: 400 });
+    }
+
+    const actualTotal = getPayableFee(totalFee, discountNum);
+    const remainingFee = getRemainingFee(totalFee, discountNum, paidAmount);
 
     const db = getAdminDb();
     const auth = getAdminAuth();
@@ -76,19 +105,25 @@ export async function POST(request: NextRequest) {
 
     const enrollment = buildEnrollment(courseId, course, instructorName, batch, batchId);
 
-    const emailQuery = await db.collection("students").where("email", "==", emailLower).limit(1).get();
-    const isExisting = !emailQuery.empty;
+    const emailQuery = await db.collection("students").where("personalEmail", "==", personalEmail).limit(1).get();
+    const loginEmailQuery = emailQuery.empty
+      ? await db.collection("students").where("email", "==", personalEmail).limit(1).get()
+      : emailQuery;
+    const isExisting = !loginEmailQuery.empty;
 
     let studentId: string;
     let uid: string;
     let isNewStudent = false;
     let createdStudentPassword = "";
 
+    let loginEmail = "";
+
     if (isExisting) {
-      const studentDoc = emailQuery.docs[0];
+      const studentDoc = loginEmailQuery.docs[0];
       studentId = studentDoc.id;
       const data = studentDoc.data();
       uid = data.uid;
+      loginEmail = data.email || buildStudentLoginEmail(studentId);
 
       if (!uid) {
         return NextResponse.json(
@@ -110,8 +145,8 @@ export async function POST(request: NextRequest) {
         enrolledCourse: updatedCourses[0] || null,
         course: updatedCourses.map((c) => c.title).join(", "),
         batch: batch?.trim() || data.batch || null,
-        rollNumber: rollNumber?.trim() || data.rollNumber || null,
         parentName: parent.trim() || data.parentName || null,
+        personalEmail,
         stats: {
           ...(data.stats || {}),
           enrolled: updatedCourses.length,
@@ -121,26 +156,30 @@ export async function POST(request: NextRequest) {
 
       await studentDoc.ref.collection("enrollments").doc(courseId).set(enrollment, { merge: true });
     } else {
-      createdStudentPassword = password?.trim() || generateSecurePassword(10);
-      if (createdStudentPassword.length < 6) {
-        return NextResponse.json({ error: "Password must be at least 6 characters." }, { status: 400 });
+      createdStudentPassword = password?.trim() || generateSixDigitPassword();
+      if (!/^\d{6}$/.test(createdStudentPassword) && createdStudentPassword.length < 6) {
+        return NextResponse.json({ error: "Password must be at least 6 characters or a 6-digit code." }, { status: 400 });
       }
 
       isNewStudent = true;
-      const counterRef = db.collection("metadata").doc("global_student_counter");
+      const year = new Date().getFullYear();
+      const counterRef = db.collection("metadata").doc(`student_counter_${year}`);
       studentId = await db.runTransaction(async (tx) => {
         const snap = await tx.get(counterRef);
         const count = (snap.exists ? snap.data()?.count || 0 : 0) + 1;
-        tx.set(counterRef, { count }, { merge: true });
-        return `ST${String(count).padStart(3, "0")}`;
+        tx.set(counterRef, { count, year }, { merge: true });
+        return formatStudentId(count, year);
       });
 
+      loginEmail = buildStudentLoginEmail(studentId);
+
       const userRecord = await auth.createUser({
-        email: emailLower,
+        email: loginEmail,
         password: createdStudentPassword,
         displayName: fullName.trim(),
       });
       uid = userRecord.uid;
+      createdAuthUid = uid;
 
       const fullAddress = [address, city, state].filter(Boolean).join(", ");
       const joinDate =
@@ -155,12 +194,12 @@ export async function POST(request: NextRequest) {
           studentId,
           fullName: fullName.trim(),
           parentName: parent.trim() || null,
-          email: emailLower,
+          email: loginEmail,
+          personalEmail,
           phone: phone.trim(),
           course,
           courseId,
           batch: batch?.trim() || null,
-          rollNumber: rollNumber?.trim() || null,
           address: fullAddress,
           qualification: qualification?.trim() || "",
           joinDate,
@@ -177,11 +216,6 @@ export async function POST(request: NextRequest) {
       await db.collection("students").doc(studentId).collection("enrollments").doc(courseId).set(enrollment);
     }
 
-    const totalFee = Number(totalCourseFee) || 0;
-    const paidAmount = Number(admissionFeePaid) || 0;
-    const discountNum = Number(discount) || 0;
-    const actualTotal = totalFee - discountNum;
-    const remainingFee = Math.max(0, actualTotal - paidAmount);
     let paymentStatus = "Pending";
     if (remainingFee <= 0) paymentStatus = "Paid";
     else if (paidAmount > 0) paymentStatus = "Partial";
@@ -192,7 +226,8 @@ export async function POST(request: NextRequest) {
       fullName: fullName.trim(),
       parentName: parent.trim() || null,
       fatherName: parent.trim() || null,
-      email: emailLower,
+      email: loginEmail,
+      personalEmail,
       phone: phone.trim(),
       course,
       courseId,
@@ -296,17 +331,35 @@ export async function POST(request: NextRequest) {
     if (isNewStudent && createdStudentPassword.length > 0) {
       await logServerAudit(performer, "student_account_created", {
         targetUserId: studentId,
-        targetEmail: emailLower,
+        targetEmail: loginEmail,
         details: `Admission for ${course}`,
       });
+
+      if (isEmailConfigured()) {
+        try {
+          await sendStudentCredentialsEmail({
+            to: personalEmail,
+            studentName: fullName.trim(),
+            studentId,
+            loginEmail,
+            password: createdStudentPassword,
+            course,
+            batch: batch?.trim(),
+          });
+        } catch (emailErr) {
+          console.error("Failed to email student credentials:", emailErr);
+        }
+      }
+
       return NextResponse.json({
         success: true,
         studentId,
         isNewStudent: true,
-        email: emailLower,
+        loginEmail,
+        personalEmail,
         temporaryPassword: createdStudentPassword,
         mustChangePassword: true,
-        message: `Student account created (${studentId}). Share login credentials securely.`,
+        message: `Student account created (${studentId}). Credentials sent to ${personalEmail}.`,
       });
     }
 
@@ -317,7 +370,21 @@ export async function POST(request: NextRequest) {
       message: `Course "${course}" added to existing student ${studentId}.`,
     });
   } catch (error) {
+    if (createdAuthUid) {
+      try {
+        await getAdminAuth().deleteUser(createdAuthUid);
+      } catch {
+        // best-effort rollback
+      }
+    }
+
     const message = error instanceof Error ? error.message : "Admission failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status =
+      message === "Unauthorized" || message === "Forbidden" || message.includes("Forbidden")
+        ? 403
+        : message.includes("email-already-exists") || message.includes("already in use")
+          ? 409
+          : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

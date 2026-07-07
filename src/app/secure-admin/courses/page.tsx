@@ -27,6 +27,9 @@ import { btnPrimary, btnPrimaryBlock, btnSecondaryBlock, inputClass, pageHeader,
 import Pagination, { usePagination } from "@/components/ui/Pagination";
 import type { Course, CourseFormValues } from "@/types/course";
 import { COURSE_CATEGORIES } from "@/types/course";
+import { adminApi } from "@/lib/adminApi";
+import { categoryNames, subscribeToCategories } from "@/lib/categoryService";
+import type { CourseCategory } from "@/types/category";
 import {
   createCourse,
   updateCourse,
@@ -42,6 +45,7 @@ type SortOrder = "latest" | "oldest";
 export default function CoursesPage() {
   const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
+  const [categoryList, setCategoryList] = useState<CourseCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -69,8 +73,22 @@ export default function CoursesPage() {
         setLoading(false);
       }
     );
-    return unsub;
+    const unsubCategories = subscribeToCategories(setCategoryList);
+    adminApi.seedCategories().catch(() => {
+      // Non-blocking: categories may already exist or user lacks permission
+    });
+    return () => {
+      unsub();
+      unsubCategories();
+    };
   }, []);
+
+  const categoryOptions = useMemo(() => {
+    const fromDb = categoryNames(categoryList);
+    if (fromDb.length > 0) return fromDb;
+    const fromCourses = [...new Set(courses.map((c) => c.category).filter(Boolean))] as string[];
+    return fromCourses.length > 0 ? fromCourses.sort() : [...COURSE_CATEGORIES];
+  }, [categoryList, courses]);
 
   const stats = useMemo(
     () => ({
@@ -244,7 +262,7 @@ export default function CoursesPage() {
               onChange={setCategoryFilter}
               options={[
                 { value: "all", label: "All Categories" },
-                ...COURSE_CATEGORIES.map((c) => ({ value: c, label: c })),
+                ...categoryOptions.map((c) => ({ value: c, label: c })),
               ]}
             />
             <FilterSelect
@@ -442,6 +460,7 @@ export default function CoursesPage() {
         open={showForm}
         mode={formMode}
         course={editingCourse}
+        categories={categoryOptions}
         saving={saving}
         onClose={() => {
           if (!saving) {

@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/lib/verifyAdminRequest";
-import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
+import { getAdminAuth, getAdminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(request: NextRequest) {
+  if (!isAdminConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          "Server configuration error: Firebase Admin SDK is not set up. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.",
+      },
+      { status: 503 }
+    );
+  }
+
+  let createdAuthUid: string | null = null;
+
   try {
-    await verifyAdminRequest(request);
+    await verifyAdminNotTrainerRequest(request);
     const body = await request.json();
 
     const {
@@ -18,7 +30,6 @@ export async function POST(request: NextRequest) {
       course,
       courseId,
       batch,
-      rollNumber,
       status = "Active",
     } = body;
 
@@ -42,7 +53,7 @@ export async function POST(request: NextRequest) {
         const snap = await tx.get(counterRef);
         const count = (snap.exists ? snap.data()?.count || 0 : 0) + 1;
         tx.set(counterRef, { count }, { merge: true });
-        return `ST${String(count).padStart(3, "0")}`;
+        return `ST${String(count).padStart(4, "0")}`;
       });
     }
 
@@ -63,6 +74,7 @@ export async function POST(request: NextRequest) {
       displayName: fullName.trim(),
       disabled: status === "Inactive" || status === "Suspended",
     });
+    createdAuthUid = userRecord.uid;
 
     const joinDate = new Date().toLocaleDateString("en-IN", {
       day: "numeric",
@@ -83,7 +95,6 @@ export async function POST(request: NextRequest) {
         course: course.trim(),
         courseId: courseId?.trim() || null,
         batch: batch?.trim() || null,
-        rollNumber: rollNumber?.trim() || null,
         status,
         role: "student",
         joinDate,
@@ -97,6 +108,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, studentId, uid: userRecord.uid });
   } catch (error) {
+    if (createdAuthUid) {
+      try {
+        await getAdminAuth().deleteUser(createdAuthUid);
+      } catch {
+        // best-effort rollback
+      }
+    }
     const message = error instanceof Error ? error.message : "Failed to create student";
     const status = message === "Unauthorized" || message === "Forbidden" ? 403 : 500;
     return NextResponse.json({ error: message }, { status });

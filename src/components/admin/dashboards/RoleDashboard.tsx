@@ -7,6 +7,7 @@ import {
   BookOpen,
   UserCheck,
   MessageSquare,
+  GraduationCap,
   ClipboardList,
   CalendarCheck,
   ShieldCheck,
@@ -130,6 +131,7 @@ function AdminDepartmentDashboard() {
   const [stats, setStats] = useState({
     admissions: 0,
     enquiries: 0,
+    admissionEnquiries: 0,
     feePending: 0,
     courses: 0,
     students: 0,
@@ -138,9 +140,10 @@ function AdminDepartmentDashboard() {
 
   useEffect(() => {
     const load = async () => {
-      const [admSnap, enqSnap, feesSnap, courseSnap, stuSnap] = await Promise.all([
+      const [admSnap, enqSnap, admEnqSnap, feesSnap, courseSnap, stuSnap] = await Promise.all([
         getDocs(collection(db, "admissions")),
         getCountFromServer(collection(db, "course_enquiries")),
+        getCountFromServer(query(collection(db, "admission_enquiries"), where("status", "==", "New"))),
         getDocs(query(collection(db, "student_fees"), where("paymentStatus", "in", ["Pending", "Partial"]))),
         getDocs(collection(db, "courses")),
         getDocs(collection(db, "students")),
@@ -148,6 +151,7 @@ function AdminDepartmentDashboard() {
       setStats({
         admissions: admSnap.size,
         enquiries: enqSnap.data().count,
+        admissionEnquiries: admEnqSnap.data().count,
         feePending: feesSnap.size,
         courses: courseSnap.size,
         students: stuSnap.size,
@@ -163,7 +167,8 @@ function AdminDepartmentDashboard() {
     <DashboardShell user={user}>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-8">
         <StatCard title="Admissions" value={stats.admissions} icon={UserCheck} accent="purple" delay={0.05} />
-        <StatCard title="Enquiries" value={stats.enquiries} icon={MessageSquare} accent="amber" delay={0.1} />
+        <StatCard title="Course Enquiries" value={stats.enquiries} icon={MessageSquare} accent="amber" delay={0.1} />
+        <StatCard title="Admission Leads" value={stats.admissionEnquiries} icon={GraduationCap} accent="blue" delay={0.12} />
         <StatCard title="Fee Records Pending" value={stats.feePending} icon={IndianRupee} accent="rose" delay={0.15} />
         <StatCard title="Courses" value={stats.courses} icon={BookOpen} accent="blue" delay={0.2} />
         <StatCard title="Students" value={stats.students} icon={Users} accent="green" delay={0.25} />
@@ -171,6 +176,7 @@ function AdminDepartmentDashboard() {
       <QuickLinks
         links={[
           { href: "/secure-admin/admissions", label: "Create Admission" },
+          { href: "/secure-admin/admission-enquiries", label: "Admission Enquiries" },
           { href: "/secure-admin/fees", label: "Fee Records" },
           { href: "/secure-admin/students", label: "Manage Students" },
           { href: "/secure-admin/enquiries", label: "Enquiries" },

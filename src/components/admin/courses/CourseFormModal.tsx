@@ -28,6 +28,7 @@ type Props = {
   open: boolean;
   mode: "create" | "edit";
   course?: Course | null;
+  categories?: string[];
   saving: boolean;
   onClose: () => void;
   onSubmit: (values: CourseFormValues) => Promise<void>;
@@ -69,6 +70,7 @@ export default function CourseFormModal({
   open,
   mode,
   course,
+  categories = COURSE_CATEGORIES,
   saving,
   onClose,
   onSubmit,
@@ -216,7 +218,7 @@ export default function CourseFormModal({
                   onChange={(e) => setValues({ ...values, category: e.target.value })}
                 >
                   <option value="">Select category</option>
-                  {COURSE_CATEGORIES.map((cat) => (
+                  {categories.map((cat) => (
                     <option key={cat} value={cat}>
                       {cat}
                     </option>

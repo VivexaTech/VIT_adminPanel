@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
+import { verifyAdminNotTrainerRequest, verifySuperAdminRequest } from "@/lib/verifyAdminRequest";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -30,7 +30,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       "course",
       "courseId",
       "batch",
-      "rollNumber",
       "status",
       "address",
       "qualification",
@@ -60,7 +59,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    await verifyAdminNotTrainerRequest(request);
+    await verifySuperAdminRequest(request);
     const { studentId } = await params;
     const db = getAdminDb();
     const auth = getAdminAuth();
@@ -72,6 +71,33 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     }
 
     const data = snap.data()!;
+    const subcollections = [
+      "notifications",
+      "tests",
+      "testHistory",
+      "classes",
+      "recordings",
+      "achievements",
+      "calendarEvents",
+      "attendance",
+      "certificates",
+      "enrollments",
+    ];
+    for (const sub of subcollections) {
+      const subSnap = await docRef.collection(sub).get();
+      if (!subSnap.empty) {
+        const batch = db.batch();
+        subSnap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    const progressRef = docRef.collection("progress").doc("summary");
+    const progressSnap = await progressRef.get();
+    if (progressSnap.exists) await progressRef.delete();
+    const feesRef = docRef.collection("fees").doc("current");
+    const feesSnap = await feesRef.get();
+    if (feesSnap.exists) await feesRef.delete();
+
     if (data.uid) {
       try {
         await auth.deleteUser(data.uid);

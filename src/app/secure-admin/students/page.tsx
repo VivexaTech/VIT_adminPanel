@@ -59,8 +59,7 @@ export default function StudentsPage() {
         s.fullName?.toLowerCase().includes(q) ||
         s.studentId?.toLowerCase().includes(q) ||
         s.email?.toLowerCase().includes(q) ||
-        s.course?.toLowerCase().includes(q) ||
-        s.rollNumber?.toLowerCase().includes(q);
+        s.course?.toLowerCase().includes(q);
       const matchesStatus = statusFilter === "all" || s.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -80,7 +79,6 @@ export default function StudentsPage() {
         course: data.course.trim(),
         courseId: data.courseId || null,
         batch: data.batch.trim() || null,
-        rollNumber: data.rollNumber.trim() || null,
         status: data.status,
         updatedAt: serverTimestamp(),
       });
@@ -216,7 +214,6 @@ export default function StudentsPage() {
                     </td>
                     <td className="px-5 py-4">
                       <p className="font-mono text-sm text-[#6C3CE9]">{s.studentId || s.id}</p>
-                      {s.rollNumber && <p className="text-xs text-slate-400">Roll: {s.rollNumber}</p>}
                     </td>
                     <td className="px-5 py-4 text-sm text-slate-600">{s.course}{s.batch ? ` · ${s.batch}` : ""}</td>
                     <td className="px-5 py-4 text-sm">

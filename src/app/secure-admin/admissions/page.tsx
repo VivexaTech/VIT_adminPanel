@@ -9,7 +9,9 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { adminApi } from "@/lib/adminApi";
 import { subscribeToCourses } from "@/lib/courseService";
+import { subscribeToBatches } from "@/lib/batchService";
 import type { Course } from "@/types/course";
+import type { Batch } from "@/types/erp";
 import { btnPrimary, btnPrimaryBlock, btnSecondaryBlock, inputClass, labelClass, modalFooter, pageHeader, pageHeaderActions, pageTitle, pageSubtitle } from "@/lib/theme";
 import CredentialsModal from "@/components/admin/CredentialsModal";
 import { generateSecurePassword } from "@/lib/passwordUtils";
@@ -20,11 +22,13 @@ export default function AdmissionsPage() {
   const { showToast } = useToast();
   const [admissions, setAdmissions] = useState<Record<string, unknown>[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedBatchId, setSelectedBatchId] = useState("");
   const [admissionDate, setAdmissionDate] = useState(new Date().toISOString().split("T")[0]);
   const [nextDueDate, setNextDueDate] = useState("");
   const [autoPassword, setAutoPassword] = useState(true);
@@ -46,7 +50,12 @@ export default function AdmissionsPage() {
 
   useEffect(() => {
     fetchAdmissions();
-    return subscribeToCourses(setCourses);
+    const unsubCourses = subscribeToCourses(setCourses);
+    const unsubBatches = subscribeToBatches(setBatches);
+    return () => {
+      unsubCourses();
+      unsubBatches();
+    };
   }, []);
 
   useEffect(() => {
@@ -57,7 +66,15 @@ export default function AdmissionsPage() {
     }
   }, [admissionDate]);
 
+  useEffect(() => {
+    setSelectedBatchId("");
+  }, [selectedCourseId]);
+
   const selectedCourse = courses.find((c) => (c.courseId || c.id) === selectedCourseId);
+  const courseBatches = batches.filter(
+    (b) => b.courseId === selectedCourseId || b.courseId === selectedCourse?.id
+  );
+  const selectedBatch = courseBatches.find((b) => (b.batchId || b.id) === selectedBatchId);
 
   const handleCreateAdmission = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -76,8 +93,8 @@ export default function AdmissionsPage() {
         password: autoPassword ? undefined : studentPassword || undefined,
         courseId: selectedCourseId,
         courseTitle: selectedCourse.title,
-        batch: formData.get("batch") as string,
-        rollNumber: formData.get("rollNumber") as string,
+        batch: selectedBatch?.name || (formData.get("batch") as string),
+        batchId: selectedBatchId || undefined,
         qualification: formData.get("qualification") as string,
         address: formData.get("address") as string,
         city: formData.get("city") as string,
@@ -96,7 +113,8 @@ export default function AdmissionsPage() {
           title: "Student Account Created",
           rows: [
             { label: "Student ID", value: result.studentId },
-            { label: "Email", value: result.email },
+            { label: "Login Email", value: result.loginEmail || result.email },
+            { label: "Personal Email", value: result.personalEmail || result.email },
             { label: "Temporary Password", value: result.temporaryPassword },
           ],
         });
@@ -210,7 +228,7 @@ export default function AdmissionsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div><label className={labelClass}>Full Name *</label><input name="fullName" required className={inputClass} /></div>
                   <div><label className={labelClass}>Parent Name</label><input name="parentName" className={inputClass} /></div>
-                  <div><label className={labelClass}>Email *</label><input name="email" type="email" required className={inputClass} /></div>
+                  <div><label className={labelClass}>Personal Email *</label><input name="email" type="email" required className={inputClass} placeholder="student@gmail.com" /></div>
                   <div><label className={labelClass}>Mobile *</label><input name="phone" required className={inputClass} /></div>
                   <div className="md:col-span-2 border border-slate-200 rounded-xl p-4 space-y-3">
                     <p className="text-sm font-medium text-slate-800">Login Password (new students)</p>
@@ -256,8 +274,22 @@ export default function AdmissionsPage() {
                       ))}
                     </select>
                   </div>
-                  <div><label className={labelClass}>Batch</label><input name="batch" className={inputClass} placeholder="e.g. Batch A - Morning" /></div>
-                  <div><label className={labelClass}>Roll Number</label><input name="rollNumber" className={inputClass} /></div>
+                  <div>
+                    <label className={labelClass}>Batch</label>
+                    <select
+                      className={inputClass}
+                      value={selectedBatchId}
+                      onChange={(e) => setSelectedBatchId(e.target.value)}
+                    >
+                      <option value="">No batch / enter manually below</option>
+                      {courseBatches.map((b) => (
+                        <option key={b.id} value={b.batchId || b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div><label className={labelClass}>Batch label (optional)</label><input name="batch" className={inputClass} placeholder="e.g. Batch A - Morning" /></div>
                   <div><label className={labelClass}>Course Duration</label><input name="courseDuration" className={inputClass} placeholder="6 Months" /></div>
                 </div>
               </section>

@@ -94,6 +94,7 @@ export interface NavItem {
 export const PRIMARY_NAV: NavItem[] = [
   { name: "Dashboard", path: "/secure-admin", permission: "dashboard" },
   { name: "Courses", path: "/secure-admin/courses", permission: "manage_courses" },
+  { name: "Categories", path: "/secure-admin/categories", permission: "manage_courses" },
   { name: "Students", path: "/secure-admin/students", permission: "manage_students" },
   { name: "Admissions", path: "/secure-admin/admissions", permission: "manage_admissions" },
   { name: "Batches", path: "/secure-admin/batches", permission: "manage_batches" },
@@ -106,6 +107,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { name: "Leave Requests", path: "/secure-admin/leaves", permission: "manage_leaves" },
   { name: "Certificates", path: "/secure-admin/certificates", permission: "manage_certificates" },
   { name: "Enquiries", path: "/secure-admin/enquiries", permission: "manage_enquiries" },
+  { name: "Admission Enquiries", path: "/secure-admin/admission-enquiries", permission: "manage_enquiries" },
   { name: "Settings", path: "/secure-admin/settings", permission: "manage_settings" },
 ];
 

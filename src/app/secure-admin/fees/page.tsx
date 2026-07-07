@@ -24,6 +24,11 @@ import {
   statsGrid,
 } from "@/lib/theme";
 import { syncStudentFeeMirror } from "@/lib/feeSync";
+import { validateFeePayment, getRemainingFee } from "@/lib/feeValidation";
+import { buildReceiptHtml } from "@/lib/receiptTemplate";
+import { generateReceiptId } from "@/lib/firebaseUtils";
+import { notifyFeeReceipt } from "@/lib/notificationService";
+import { adminApi } from "@/lib/adminApi";
 import { createApprovalRequest } from "@/lib/approvalService";
 import { isSuperAdmin } from "@/lib/rbac";
 import { logAudit } from "@/lib/auditService";
@@ -224,9 +229,18 @@ export default function FeeManagementPage() {
 
     const formData = new FormData(e.currentTarget);
     const amountPaid = Number(formData.get("amount"));
-    
+    const discount = Number(currentRecord.discount || 0);
     const newPaidAmount = currentRecord.paidAmount + amountPaid;
-    const newRemainingFee = Math.max(0, currentRecord.totalFee - newPaidAmount);
+    const feeError = validateFeePayment({
+      totalFee: currentRecord.totalFee,
+      discount,
+      paidAmount: newPaidAmount,
+    });
+    if (feeError) {
+      alert(feeError);
+      return;
+    }
+    const newRemainingFee = getRemainingFee(currentRecord.totalFee, discount, newPaidAmount);
     
     let paymentStatus = currentRecord.paymentStatus;
     if (newRemainingFee === 0) paymentStatus = "Paid";
@@ -277,6 +291,51 @@ export default function FeeManagementPage() {
         installmentType: currentRecord.installmentType,
         installments: updatedInstallments,
       });
+
+      try {
+        const receiptNo = await generateReceiptId();
+        const receiptHtml = buildReceiptHtml({
+          receiptNo,
+          date: newInstallment.date,
+          studentName: currentRecord.studentName,
+          studentId: currentRecord.studentId || currentRecord.id,
+          courseName: currentRecord.course,
+          paymentMode: newInstallment.method,
+          lineItems: [{ description: "Course Fee Payment", amount: amountPaid }],
+          totalFee: currentRecord.totalFee - discount,
+          previouslyPaid: currentRecord.paidAmount,
+          currentPayment: amountPaid,
+          remainingBalance: newRemainingFee,
+        }, { includePrintButton: true });
+
+        await setDoc(doc(db, "receipts", receiptNo), {
+          receiptNo,
+          studentId: currentRecord.studentId || currentRecord.id,
+          studentName: currentRecord.studentName,
+          amount: amountPaid,
+          course: currentRecord.course,
+          createdAt: serverTimestamp(),
+        });
+
+        const studentSnap = await getDoc(doc(db, "students", currentRecord.studentId || currentRecord.id));
+        const studentEmail = studentSnap.data()?.personalEmail || studentSnap.data()?.email;
+        if (studentEmail) {
+          await adminApi.sendFeeReceiptEmail({
+            to: studentEmail,
+            studentName: currentRecord.studentName,
+            receiptHtml,
+            receiptNo,
+          });
+        }
+        await notifyFeeReceipt({
+          studentId: currentRecord.studentId || currentRecord.id,
+          receiptNo,
+          amount: amountPaid,
+        });
+      } catch (receiptErr) {
+        console.error("Receipt generation/email failed:", receiptErr);
+      }
+
       await logAudit(user, "fee_updated", { resourceId: currentRecord.id, details: paymentStatus });
       setShowPaymentModal(false);
       fetchFeeRecords();

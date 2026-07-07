@@ -61,15 +61,13 @@ export type CourseFormValues = {
 
 export const COURSE_LEVELS: CourseLevel[] = ["Beginner", "Intermediate", "Advanced"];
 
+/** Fallback when Firestore categories collection is empty */
 export const COURSE_CATEGORIES = [
-  "Web Development",
-  "Data Science",
-  "Mobile Development",
-  "AI/ML",
-  "Design",
-  "Cloud Computing",
-  "Cybersecurity",
-  "Other",
+  "Development",
+  "Marketing",
+  "Accounting",
+  "Analytics",
+  "Artificial Intelligence",
 ];
 
 export const CSV_HEADERS = [

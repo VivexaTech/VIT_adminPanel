@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/lib/verifyAdminRequest";
 import { deleteCloudinaryVideo } from "@/lib/cloudinaryServer";
-import { deleteRecordingFromFirestore } from "@/lib/recordingService";
+import { deleteRecordingFromFirestoreAdmin } from "@/lib/recordingAdminService";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "recordingId is required." }, { status: 400 });
     }
 
-    const publicId = await deleteRecordingFromFirestore(recordingId);
+    const publicId = await deleteRecordingFromFirestoreAdmin(recordingId);
     if (!publicId) {
       return NextResponse.json({ error: "Recording not found." }, { status: 404 });
     }

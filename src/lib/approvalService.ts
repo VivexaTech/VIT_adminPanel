@@ -162,7 +162,38 @@ async function executeApprovalAction(request: ApprovalRequest): Promise<void> {
   switch (actionType) {
     case "student_delete": {
       const studentId = String(payload.studentId || targetId);
-      await deleteDoc(doc(db, "students", studentId));
+      const studentRef = doc(db, "students", studentId);
+      const studentSnap = await getDoc(studentRef);
+      if (!studentSnap.exists()) throw new Error("Student not found");
+
+      const subcollections = [
+        "notifications",
+        "tests",
+        "testHistory",
+        "classes",
+        "recordings",
+        "achievements",
+        "calendarEvents",
+        "attendance",
+        "certificates",
+        "enrollments",
+      ];
+      for (const sub of subcollections) {
+        const subSnap = await getDocs(collection(studentRef, sub));
+        await Promise.all(subSnap.docs.map((d) => deleteDoc(d.ref)));
+      }
+      const progressRef = doc(db, "students", studentId, "progress", "summary");
+      const progressSnap = await getDoc(progressRef);
+      if (progressSnap.exists()) await deleteDoc(progressRef);
+      const feesMirrorRef = doc(db, "students", studentId, "fees", "current");
+      const feesMirrorSnap = await getDoc(feesMirrorRef);
+      if (feesMirrorSnap.exists()) await deleteDoc(feesMirrorRef);
+
+      await deleteDoc(studentRef);
+
+      const feeLedgerRef = doc(db, "student_fees", studentId);
+      const feeLedgerSnap = await getDoc(feeLedgerRef);
+      if (feeLedgerSnap.exists()) await deleteDoc(feeLedgerRef);
       break;
     }
     case "fee_modification": {

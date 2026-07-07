@@ -69,7 +69,7 @@ service cloud.firestore {
 
     match /students/{studentId}/fees/{docId} {
       allow read: if isActiveAdmin() || isStudentOwner(studentId);
-      allow write: if isSuperAdmin();
+      allow write: if isAdminNotTrainer();
     }
 
     match /students/{studentId}/certificates/{certId} {
@@ -133,7 +133,19 @@ service cloud.firestore {
     // ─── Fees ────────────────────────────────────────────────────
     match /student_fees/{feeId} {
       allow read: if isAdminNotTrainer() || isStudentOwner(feeId);
-      allow write: if isSuperAdmin();
+      allow write: if isAdminNotTrainer();
+    }
+
+    match /accountDeletionRequests/{id} {
+      allow read, update, delete: if isAdminNotTrainer();
+      allow create: if request.resource.data.status == 'pending'
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 3;
+    }
+
+    match /receipts/{receiptId} {
+      allow read: if isAdminNotTrainer();
+      allow write: if isAdminNotTrainer();
     }
 
     // ─── Courses (public catalog) ────────────────────────────────
@@ -180,6 +192,35 @@ service cloud.firestore {
     match /question_bank/{id} {
       allow read: if isActiveAdmin();
       allow write: if isAdminNotTrainer();
+    }
+
+    // ─── Course categories (public read for website/app) ───────
+    match /categories/{id} {
+      allow read: if true;
+      allow write: if isAdminNotTrainer();
+    }
+
+    // ─── Website admission enquiries ─────────────────────────────
+    match /admission_enquiries/{id} {
+      allow read, update, delete: if isAdminNotTrainer();
+      allow create: if request.resource.data.keys().hasAll(['fullName', 'phone', 'course', 'status'])
+        && request.resource.data.status == 'New'
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() >= 10
+        && request.resource.data.course is string
+        && request.resource.data.course.size() > 0;
+    }
+
+    // ─── Website contact messages ────────────────────────────────
+    match /contact_messages/{id} {
+      allow read, update, delete: if isAdminNotTrainer();
+      allow create: if request.resource.data.keys().hasAll(['fullName', 'email', 'phone', 'message'])
+        && request.resource.data.fullName is string
+        && request.resource.data.email is string
+        && request.resource.data.phone is string
+        && request.resource.data.message is string;
     }
 
     // ─── Enquiries (students can submit) ─────────────────────────

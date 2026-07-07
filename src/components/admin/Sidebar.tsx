@@ -31,6 +31,7 @@ import { subscribePendingApprovals } from "@/lib/approvalService";
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   Dashboard: LayoutDashboard,
   Courses: BookOpen,
+  Categories: Layers,
   Students: Users,
   Admissions: UserPlus,
   Batches: Layers,

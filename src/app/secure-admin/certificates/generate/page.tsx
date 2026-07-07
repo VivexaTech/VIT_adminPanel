@@ -10,7 +10,7 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 import { jsPDF } from "jspdf";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -32,6 +32,28 @@ import { checkCertificateEligibility, type CertificateEligibility } from "@/lib/
 import { issueCertificate, studentHasCertificate } from "@/lib/certificateService";
 import { useAuth } from "@/context/AuthContext";
 import { logAudit } from "@/lib/auditService";
+
+const CERT_CLASSES = new Set([
+  "cert-layer",
+  "cert-bg",
+  "student-name",
+  "course-name",
+  "text-small",
+  "duration",
+  "date",
+  "id-num",
+  "grade",
+  "qr-code",
+]);
+
+function stripTailwindFromClone(root: Element) {
+  if (!(root instanceof HTMLElement)) return;
+  const kept = [...root.classList].filter((c) => CERT_CLASSES.has(c));
+  root.className = kept.join(" ");
+  root.childNodes.forEach((child) => {
+    if (child instanceof Element) stripTailwindFromClone(child);
+  });
+}
 
 export default function CertificateGeneratorPage() {
   const router = useRouter();
@@ -157,12 +179,6 @@ export default function CertificateGeneratorPage() {
     }
   };
 
-  // ==========================================
-  // BULLETPROOF OFF-SCREEN CAPTURE METHOD
-  // ==========================================
-// ==========================================
-  // BULLETPROOF OFF-SCREEN CAPTURE METHOD
-  // ==========================================
   const captureCertificate = async () => {
     setProcessingState("Generating high-res image...");
     const certElement = certRef.current;
@@ -179,11 +195,13 @@ export default function CertificateGeneratorPage() {
     printContainer.style.width = "3508px";
     printContainer.style.height = "2480px";
 
-    // 2. Clone the original node
+    // 2. Clone and strip Tailwind utility classes (v4 uses lab()/oklch())
     const clone = certElement.cloneNode(true) as HTMLDivElement;
-    clone.style.transform = "none"; // UI scaling hata dein
+    stripTailwindFromClone(clone);
+    clone.style.transform = "none";
     clone.style.margin = "0";
     clone.style.padding = "0";
+    clone.style.boxShadow = "none";
 
     printContainer.appendChild(clone);
     document.body.appendChild(printContainer);
@@ -220,21 +238,25 @@ export default function CertificateGeneratorPage() {
     file: Blob,
     resourceType: "image" | "raw",
   ): Promise<string> => {
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+    if (!cloudName || !preset) {
+      return Promise.reject(
+        new Error("Cloudinary is not configured. Set NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME and NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET in .env.local.")
+      );
+    }
     return new Promise((resolve, reject) => {
       setProcessingState(`Uploading to Cloudinary...`);
       setUploadProgress(0);
 
       const formData = new FormData();
       formData.append("file", file);
-      formData.append(
-        "upload_preset",
-        process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "",
-      );
+      formData.append("upload_preset", preset);
 
       const xhr = new XMLHttpRequest();
       xhr.open(
         "POST",
-        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,
+        `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
       );
 
       xhr.upload.onprogress = (event) => {
@@ -251,7 +273,7 @@ export default function CertificateGeneratorPage() {
           const response = JSON.parse(xhr.responseText);
           resolve(response.secure_url);
         } else {
-          reject(new Error("Upload failed"));
+          reject(new Error(`Cloudinary upload failed (${xhr.status}): ${xhr.responseText || "Unknown error"}`));
         }
       };
 
@@ -477,40 +499,57 @@ export default function CertificateGeneratorPage() {
                 <div
                   id="certificate-output"
                   ref={certRef}
-                  className="shadow-2xl"
                   style={{
                     width: "3508px",
                     height: "2480px",
                     backgroundColor: "#ffffff",
                     position: "relative",
-                    overflow: "hidden" 
+                    overflow: "hidden",
                   }}
                 >
                   <img
                     src="/certificate-template.svg"
                     alt="Template"
-                    className="cert-bg absolute top-0 left-0 w-full h-full object-cover z-0 pointer-events-none"
+                    className="cert-bg"
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      zIndex: 0,
+                      pointerEvents: "none",
+                    }}
                     crossOrigin="anonymous"
                   />
 
                   <div className="cert-layer student-name">{certData.name}</div>
-                  <div className="cert-layer course-name text-[#C8922E]">
+                  <div className="cert-layer course-name" style={{ color: "#C8922E" }}>
                     {certData.course}
                   </div>
-                  <div className="cert-layer text-small duration text-black">
+                  <div className="cert-layer text-small duration" style={{ color: "#000000" }}>
                     {certData.duration}
                   </div>
-                  <div className="cert-layer text-small date text-black">
+                  <div className="cert-layer text-small date" style={{ color: "#000000" }}>
                     {certData.date}
                   </div>
-                  <div className="cert-layer text-small id-num text-black">
+                  <div className="cert-layer text-small id-num" style={{ color: "#000000" }}>
                     {certData.id}
                   </div>
-                  <div className="cert-layer text-small grade text-black">
+                  <div className="cert-layer text-small grade" style={{ color: "#000000" }}>
                     {certData.grade || "-"}
                   </div>
 
-                  <div className="cert-layer qr-code bg-white flex items-center justify-center">
+                  <div
+                    className="cert-layer qr-code"
+                    style={{
+                      backgroundColor: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
                     {certData.url && (
                       <QRCodeSVG
                         value={certData.url}
