@@ -12,6 +12,8 @@ import {
 } from "@/lib/studentIdUtils";
 import { sendStudentCredentialsEmail, isEmailConfigured } from "@/lib/emailService";
 
+export const runtime = "nodejs";
+
 function buildEnrollment(
   courseId: string,
   title: string,

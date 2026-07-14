@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
+export const runtime = "nodejs";
+
 export async function verifyStudentRequest(request: NextRequest) {
   if (!isAdminConfigured()) {
     throw new Error("Server configuration error");

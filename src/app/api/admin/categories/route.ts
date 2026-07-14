@@ -4,6 +4,8 @@ import { getAdminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { slugifyCategory } from "@/types/category";
 
+export const runtime = "nodejs";
+
 export async function GET(request: NextRequest) {
   try {
     if (!isAdminConfigured()) {

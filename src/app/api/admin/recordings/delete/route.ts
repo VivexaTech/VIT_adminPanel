@@ -3,6 +3,8 @@ import { verifyAdminRequest } from "@/lib/verifyAdminRequest";
 import { deleteCloudinaryVideo } from "@/lib/cloudinaryServer";
 import { deleteRecordingFromFirestoreAdmin } from "@/lib/recordingAdminService";
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     await verifyAdminRequest(request);

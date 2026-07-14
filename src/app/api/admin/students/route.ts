@@ -3,6 +3,8 @@ import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
 import { getAdminAuth, getAdminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   if (!isAdminConfigured()) {
     return NextResponse.json(

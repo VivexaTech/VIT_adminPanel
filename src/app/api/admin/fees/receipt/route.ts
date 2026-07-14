@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
 import { sendFeeReceiptEmail, isEmailConfigured } from "@/lib/emailService";
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     await verifyAdminNotTrainerRequest(request);

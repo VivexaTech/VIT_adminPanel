@@ -5,6 +5,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { generateSecurePassword, validatePasswordStrength } from "@/lib/passwordUtils";
 import { logServerAudit } from "@/lib/serverAudit";
 
+export const runtime = "nodejs";
+
 async function nextStaffId(role: string): Promise<string> {
   const db = getAdminDb();
   const isTrainer = role === "Trainer" || role === "Teaching Team";

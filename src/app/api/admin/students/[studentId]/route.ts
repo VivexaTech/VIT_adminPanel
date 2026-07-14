@@ -3,6 +3,8 @@ import { verifyAdminNotTrainerRequest, verifySuperAdminRequest } from "@/lib/ver
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
+export const runtime = "nodejs";
+
 type Params = { params: Promise<{ studentId: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {

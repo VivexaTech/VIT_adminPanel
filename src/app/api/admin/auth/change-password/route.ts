@@ -5,6 +5,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { validatePasswordStrength } from "@/lib/passwordUtils";
 import { logServerAudit } from "@/lib/serverAudit";
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     const admin = await verifyAdminRequest(request);

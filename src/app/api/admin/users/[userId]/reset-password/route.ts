@@ -5,6 +5,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { generateSecurePassword, validatePasswordStrength } from "@/lib/passwordUtils";
 import { logServerAudit } from "@/lib/serverAudit";
 
+export const runtime = "nodejs";
+
 type Params = { params: Promise<{ userId: string }> };
 
 export async function POST(request: NextRequest, { params }: Params) {

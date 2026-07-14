@@ -4,6 +4,8 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { logServerAudit } from "@/lib/serverAudit";
 
+export const runtime = "nodejs";
+
 type Params = { params: Promise<{ userId: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
