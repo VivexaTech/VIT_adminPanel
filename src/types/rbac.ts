@@ -26,7 +26,10 @@ export type Permission =
   | "view_reports"
   | "view_audit_logs"
   | "manage_approvals"
-  | "manage_leaves";
+  | "manage_leaves"
+  | "manage_discounts"
+  | "manage_notices"
+  | "manage_banners";
 
 export type ApprovalActionType =
   | "student_delete"

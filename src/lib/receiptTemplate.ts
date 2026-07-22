@@ -11,6 +11,8 @@ export type ReceiptData = {
   previouslyPaid: number;
   currentPayment: number;
   remainingBalance: number;
+  logoUrl?: string;
+  authorizedSignatureUrl?: string;
 };
 
 function formatINR(amount: number): string {
@@ -22,6 +24,8 @@ function formatDisplayDate(iso: string): string {
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
+
+const DEFAULT_LOGO = "https://vit.vivexatech.in/web-app-manifest-512x512.png";
 
 export function buildReceiptHtml(data: ReceiptData, options?: { includePrintButton?: boolean }): string {
   const rows = data.lineItems
@@ -37,6 +41,11 @@ export function buildReceiptHtml(data: ReceiptData, options?: { includePrintButt
         Print Receipt
       </button>`
     : "";
+
+  const logoSrc = data.logoUrl?.trim() || DEFAULT_LOGO;
+  const signatureBlock = data.authorizedSignatureUrl?.trim()
+    ? `<img src="${data.authorizedSignatureUrl.trim()}" alt="Authorized Signature" class="sign-img" /><p>Authorized Signatory</p>`
+    : `<div class="sign-line"></div><p>Authorized Signatory</p>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -76,6 +85,7 @@ table td { padding: 15px; border-bottom: 1px solid var(--border-color); font-siz
 .footer { display: flex; justify-content: space-between; margin-top: 70px; position: relative; z-index: 1; }
 .sign-box { text-align: center; width: 200px; }
 .sign-line { border-bottom: 1px solid var(--text-main); margin-bottom: 10px; height: 40px; }
+.sign-img { max-width: 180px; max-height: 70px; object-fit: contain; margin: 0 auto 10px auto; display: block; }
 .sign-box p { font-size: 13px; color: var(--text-muted); font-weight: 500; }
 .note { margin-top: 40px; padding-top: 20px; border-top: 1px dashed var(--border-color); font-size: 12px; color: var(--text-muted); text-align: center; position: relative; z-index: 1; }
 @media print { body { background: white; padding: 0; } .print-btn { display: none; } .receipt { box-shadow: none; border-radius: 0; max-width: 100%; padding: 40px; } }
@@ -86,7 +96,7 @@ ${printBtn}
 <div class="receipt">
   <div class="watermark">PAID</div>
   <div class="header">
-    <img src="https://vit.vivexatech.in/web-app-manifest-512x512.png" alt="VIT Logo" class="logo">
+    <img src="${logoSrc}" alt="VIT Logo" class="logo">
     <div class="company-details">
       <h1>VIVEXA INSTITUTE OF TECHNOLOGY</h1>
       <p class="subtitle">Professional Computer & IT Training Institute</p>
@@ -117,7 +127,7 @@ ${printBtn}
   </div>
   <div class="footer">
     <div class="sign-box"><div class="sign-line"></div><p>Student Signature</p></div>
-    <div class="sign-box"><div class="sign-line"></div><p>Authorized Signatory</p></div>
+    <div class="sign-box">${signatureBlock}</div>
   </div>
   <div class="note">This is a computer-generated receipt issued by Vivexa Institute of Technology and does not require a physical signature.</div>
 </div>

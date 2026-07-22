@@ -15,6 +15,8 @@ export const DEFAULT_SETTINGS: InstituteSettings = {
   instagram: "",
   twitter: "",
   youtube: "",
+  logoUrl: "",
+  authorizedSignatureUrl: "",
 };
 
 export function subscribeToSettings(

@@ -22,6 +22,9 @@ const ALL_PERMISSIONS: Permission[] = [
   "view_audit_logs",
   "manage_approvals",
   "manage_leaves",
+  "manage_discounts",
+  "manage_notices",
+  "manage_banners",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -39,6 +42,9 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "manage_enquiries",
     "manage_materials",
     "view_reports",
+    "manage_discounts",
+    "manage_notices",
+    "manage_banners",
   ],
   [ROLES.TRAINER]: [
     "dashboard",
@@ -112,6 +118,9 @@ export const PRIMARY_NAV: NavItem[] = [
 ];
 
 export const MORE_NAV: NavItem[] = [
+  { name: "Discounts", path: "/secure-admin/discounts", permission: "manage_discounts" },
+  { name: "Offers & Notices", path: "/secure-admin/notices", permission: "manage_notices" },
+  { name: "Website Banners", path: "/secure-admin/banners", permission: "manage_banners" },
   { name: "Fee Management", path: "/secure-admin/fees", permission: "manage_fees" },
   { name: "Approvals", path: "/secure-admin/approvals", permission: "manage_approvals", superAdminOnly: true },
   { name: "Admin Users", path: "/secure-admin/users", permission: "manage_users", superAdminOnly: true },

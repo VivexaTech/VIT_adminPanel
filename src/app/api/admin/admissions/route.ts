@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
 import { getAdminAuth, getAdminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { generateSecurePassword } from "@/lib/passwordUtils";
 import { logServerAudit } from "@/lib/serverAudit";
 import { validateFeePayment, getRemainingFee, getPayableFee } from "@/lib/feeValidation";
@@ -10,9 +10,31 @@ import {
   buildStudentLoginEmail,
   generateSixDigitPassword,
 } from "@/lib/studentIdUtils";
-import { sendStudentCredentialsEmail, isEmailConfigured } from "@/lib/emailService";
+import { sendStudentCredentialsEmail, sendFeeReceiptEmail, isEmailConfigured } from "@/lib/emailService";
+import { buildReceiptHtml } from "@/lib/receiptTemplate";
 
 export const runtime = "nodejs";
+
+function formatNotificationTime(date = new Date()): string {
+  return date.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+async function generateReceiptNoServer(db: Firestore): Promise<string> {
+  const year = new Date().getFullYear().toString();
+  const counterRef = db.collection("metadata").doc(`receipt_counter_${year}`);
+  const count = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(counterRef);
+    const next = (snap.exists ? snap.data()?.count || 0 : 0) + 1;
+    tx.set(counterRef, { count: next, year: Number(year) }, { merge: true });
+    return next;
+  });
+  return `VIT-REC-${year}-${count.toString().padStart(3, "0")}`;
+}
 
 function buildEnrollment(
   courseId: string,
@@ -330,6 +352,89 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let receiptNo: string | undefined;
+    let receiptHtml: string | undefined;
+
+    if (paidAmount > 0) {
+      try {
+        const settingsSnap = await db.collection("appConfig").doc("institute").get();
+        const settingsData = settingsSnap.exists ? settingsSnap.data() || {} : {};
+        const logoUrl =
+          typeof settingsData.logoUrl === "string" ? settingsData.logoUrl : undefined;
+        const authorizedSignatureUrl =
+          typeof settingsData.authorizedSignatureUrl === "string"
+            ? settingsData.authorizedSignatureUrl
+            : undefined;
+
+        const feeAfterSnap = await feeRef.get();
+        const feeAfter = feeAfterSnap.exists ? feeAfterSnap.data() || {} : {};
+        const totalFeeForReceipt = Number(feeAfter.totalFee) || actualTotal;
+        const remainingForReceipt = Number(feeAfter.remainingFee) || remainingFee;
+        const previouslyPaid = Math.max(0, (Number(feeAfter.paidAmount) || paidAmount) - paidAmount);
+        const paymentDate = admissionDate || new Date().toISOString().split("T")[0];
+
+        receiptNo = await generateReceiptNoServer(db);
+        receiptHtml = buildReceiptHtml(
+          {
+            receiptNo,
+            date: paymentDate,
+            studentName: fullName.trim(),
+            studentId,
+            mobile: phone.trim(),
+            courseName: course,
+            paymentMode: paymentMethod,
+            lineItems: [{ description: `Admission fee - ${course}`, amount: paidAmount }],
+            totalFee: totalFeeForReceipt,
+            previouslyPaid,
+            currentPayment: paidAmount,
+            remainingBalance: remainingForReceipt,
+            logoUrl,
+            authorizedSignatureUrl,
+          },
+          { includePrintButton: true }
+        );
+
+        await db.collection("receipts").doc(receiptNo).set({
+          receiptNo,
+          studentId,
+          studentName: fullName.trim(),
+          amount: paidAmount,
+          course,
+          remainingAmount: remainingForReceipt,
+          paymentMode: paymentMethod,
+          receiptHtml,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+
+        await db.collection("students").doc(studentId).collection("notifications").add({
+          type: "fee_receipt",
+          title: "Fee Receipt Generated",
+          message: `Receipt ${receiptNo} for ₹${paidAmount.toLocaleString("en-IN")} has been issued.`,
+          time: formatNotificationTime(),
+          isRead: false,
+          route: "/profile/fee",
+          createdAt: FieldValue.serverTimestamp(),
+        });
+
+        if (isEmailConfigured()) {
+          try {
+            await sendFeeReceiptEmail({
+              to: personalEmail,
+              studentName: fullName.trim(),
+              receiptHtml,
+              receiptNo,
+            });
+          } catch (receiptEmailErr) {
+            console.error("Failed to email admission fee receipt:", receiptEmailErr);
+          }
+        }
+      } catch (receiptErr) {
+        console.error("Admission fee receipt generation failed:", receiptErr);
+        receiptNo = undefined;
+        receiptHtml = undefined;
+      }
+    }
+
     if (isNewStudent && createdStudentPassword.length > 0) {
       await logServerAudit(performer, "student_account_created", {
         targetUserId: studentId,
@@ -361,6 +466,8 @@ export async function POST(request: NextRequest) {
         personalEmail,
         temporaryPassword: createdStudentPassword,
         mustChangePassword: true,
+        receiptNo: receiptNo || null,
+        receiptHtml: receiptHtml || null,
         message: `Student account created (${studentId}). Credentials sent to ${personalEmail}.`,
       });
     }
@@ -369,6 +476,8 @@ export async function POST(request: NextRequest) {
       success: true,
       studentId,
       isNewStudent: false,
+      receiptNo: receiptNo || null,
+      receiptHtml: receiptHtml || null,
       message: `Course "${course}" added to existing student ${studentId}.`,
     });
   } catch (error) {

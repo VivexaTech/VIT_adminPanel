@@ -177,6 +177,7 @@ export interface InstituteSettings {
   twitter?: string;
   youtube?: string;
   logoUrl?: string;
+  authorizedSignatureUrl?: string;
   updatedAt?: unknown;
 }
 

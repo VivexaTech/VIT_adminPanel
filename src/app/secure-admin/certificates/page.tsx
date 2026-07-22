@@ -2,25 +2,40 @@
 
 import { useState, useEffect } from "react";
 import PageTransition from "@/components/admin/PageTransition";
-import { Search, Plus, Trash2, ExternalLink, ImageIcon } from "lucide-react";
+import { Search, Plus, Trash2, Eye, Download, Printer, X } from "lucide-react";
 import { collection, getDocs, deleteDoc, doc, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/context/ToastContext";
+import { jsPDF } from "jspdf";
 import { btnPrimaryBlock, inputClass, pageHeader, pageHeaderActions, pageTitle, pageSubtitle } from "@/lib/theme";
+
+type CertificateRow = {
+  id: string;
+  studentName?: string;
+  certificateId?: string;
+  course?: string;
+  issueDate?: string;
+  certificateImage?: string;
+  certificatePdf?: string;
+};
 
 export default function CertificatesPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [certificates, setCertificates] = useState<any[]>([]);
+  const { showToast } = useToast();
+  const [certificates, setCertificates] = useState<CertificateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [viewImage, setViewImage] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const fetchCertificates = async () => {
     try {
       const q = query(collection(db, "certificates"), orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(q);
-      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data = querySnapshot.docs.map((d) => ({ id: d.id, ...d.data() } as CertificateRow));
       setCertificates(data);
     } catch (error) {
       console.error("Error fetching certificates: ", error);
@@ -34,16 +49,77 @@ export default function CertificatesPage() {
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this certificate?")) {
-      await deleteDoc(doc(db, "certificates", id));
-      fetchCertificates();
+    if (!window.confirm("Are you sure you want to delete this certificate?")) return;
+    await deleteDoc(doc(db, "certificates", id));
+    fetchCertificates();
+  };
+
+  const handleDownloadPng = async (cert: CertificateRow) => {
+    if (!cert.certificateImage) {
+      showToast("error", "No certificate image available.");
+      return;
+    }
+    setBusyId(cert.id);
+    try {
+      const res = await fetch(cert.certificateImage);
+      if (!res.ok) throw new Error("Failed to fetch image");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${cert.certificateId || cert.id}.png`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      showToast("error", "Failed to download certificate PNG.");
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const filteredCerts = certificates.filter(c =>
-    c.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.certificateId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.course?.toLowerCase().includes(searchTerm.toLowerCase())
+  const handlePrintPdf = async (cert: CertificateRow) => {
+    if (!cert.certificateImage) {
+      showToast("error", "No certificate image available.");
+      return;
+    }
+    setBusyId(cert.id);
+    try {
+      const res = await fetch(cert.certificateImage);
+      if (!res.ok) throw new Error("Failed to fetch image");
+      const blob = await res.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Failed to read image"));
+        reader.readAsDataURL(blob);
+      });
+
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      pdf.addImage(dataUrl, "PNG", 0, 0, pageWidth, pageHeight);
+      pdf.autoPrint();
+      window.open(pdf.output("bloburl"), "_blank");
+    } catch (err) {
+      console.error(err);
+      showToast("error", "Failed to generate print PDF.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const filteredCerts = certificates.filter(
+    (c) =>
+      c.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.certificateId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.course?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -102,17 +178,43 @@ export default function CertificatesPage() {
                     <td className="px-4 sm:px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1 sm:gap-2">
                         {cert.certificateImage && (
-                          <a href={cert.certificateImage} target="_blank" rel="noreferrer" className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="View Image">
-                            <ImageIcon size={16} />
-                          </a>
-                        )}
-                        {cert.certificatePdf && (
-                          <a href={cert.certificatePdf} target="_blank" rel="noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View PDF">
-                            <ExternalLink size={16} />
-                          </a>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setViewImage(cert.certificateImage || null)}
+                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                              title="View"
+                              disabled={busyId === cert.id}
+                            >
+                              <Eye size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadPng(cert)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Download PNG"
+                              disabled={busyId === cert.id}
+                            >
+                              <Download size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handlePrintPdf(cert)}
+                              className="p-2 text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                              title="Print PDF"
+                              disabled={busyId === cert.id}
+                            >
+                              <Printer size={16} />
+                            </button>
+                          </>
                         )}
                         {user?.role === "Super Admin" && (
-                          <button type="button" onClick={() => handleDelete(cert.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(cert.id)}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete"
+                          >
                             <Trash2 size={16} />
                           </button>
                         )}
@@ -125,6 +227,28 @@ export default function CertificatesPage() {
           </table>
         </div>
       </div>
+
+      {viewImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-5xl max-h-[90dvh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-900">Certificate Preview</h3>
+              <button
+                type="button"
+                onClick={() => setViewImage(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-lg"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 overflow-auto bg-slate-50">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={viewImage} alt="Certificate" className="w-full h-auto rounded-lg border border-slate-200" />
+            </div>
+          </div>
+        </div>
+      )}
     </PageTransition>
   );
 }

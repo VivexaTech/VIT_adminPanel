@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import PageTransition from "@/components/admin/PageTransition";
-import { Search, Plus, Trash2, X } from "lucide-react";
+import { Search, Plus, Trash2, X, Printer } from "lucide-react";
 import { collection, getDocs, deleteDoc, doc, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
@@ -12,10 +12,16 @@ import { subscribeToCourses } from "@/lib/courseService";
 import { subscribeToBatches } from "@/lib/batchService";
 import type { Course } from "@/types/course";
 import type { Batch } from "@/types/erp";
-import { btnPrimary, btnPrimaryBlock, btnSecondaryBlock, inputClass, labelClass, modalFooter, pageHeader, pageHeaderActions, pageTitle, pageSubtitle } from "@/lib/theme";
+import { btnPrimaryBlock, btnSecondaryBlock, inputClass, labelClass, modalFooter, pageHeader, pageHeaderActions, pageTitle, pageSubtitle } from "@/lib/theme";
 import CredentialsModal from "@/components/admin/CredentialsModal";
 import { generateSecurePassword } from "@/lib/passwordUtils";
 import { RefreshCw } from "lucide-react";
+
+type ReceiptSuccess = {
+  receiptNo: string;
+  receiptHtml: string;
+  studentId: string;
+};
 
 export default function AdmissionsPage() {
   const { user } = useAuth();
@@ -34,6 +40,7 @@ export default function AdmissionsPage() {
   const [autoPassword, setAutoPassword] = useState(true);
   const [studentPassword, setStudentPassword] = useState("");
   const [credentials, setCredentials] = useState<{ title: string; rows: { label: string; value: string }[] } | null>(null);
+  const [receiptSuccess, setReceiptSuccess] = useState<ReceiptSuccess | null>(null);
 
   const fetchAdmissions = async () => {
     try {
@@ -119,6 +126,13 @@ export default function AdmissionsPage() {
           ],
         });
       }
+      if (result.receiptNo && result.receiptHtml) {
+        setReceiptSuccess({
+          receiptNo: result.receiptNo,
+          receiptHtml: result.receiptHtml,
+          studentId: result.studentId,
+        });
+      }
       showToast("success", result.message || "Admission processed successfully.");
       setShowModal(false);
       setStudentPassword("");
@@ -128,6 +142,22 @@ export default function AdmissionsPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handlePrintReceipt = () => {
+    if (!receiptSuccess?.receiptHtml) return;
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
+    if (!printWindow) {
+      showToast("error", "Unable to open print window. Allow pop-ups and try again.");
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(receiptSuccess.receiptHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 400);
   };
 
   const handleDelete = async (id: string) => {
@@ -333,6 +363,40 @@ export default function AdmissionsPage() {
         rows={credentials?.rows || []}
         notice="Student should change password on first login in the mobile app."
       />
+
+      {receiptSuccess && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-start justify-between p-5 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Admission Fee Receipt</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Receipt {receiptSuccess.receiptNo} was generated for student {receiptSuccess.studentId}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReceiptSuccess(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 flex flex-col gap-2">
+              <button type="button" onClick={handlePrintReceipt} className={btnPrimaryBlock}>
+                <Printer size={16} /> Print Receipt
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceiptSuccess(null)}
+                className="text-sm text-slate-500 py-2 hover:text-slate-800"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageTransition>
   );
 }

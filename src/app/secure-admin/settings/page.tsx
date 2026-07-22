@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import PageTransition from "@/components/admin/PageTransition";
+import ImageUploadField from "@/components/admin/courses/ImageUploadField";
 import { DEFAULT_SETTINGS, saveSettings, subscribeToSettings } from "@/lib/settingsService";
 import { useToast } from "@/context/ToastContext";
 import { btnPrimary, inputClass, labelClass } from "@/lib/theme";
@@ -54,7 +55,7 @@ export default function SettingsPage() {
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
               <Building2 className="text-[#6C3CE9]" size={26} /> Institute Settings
             </h1>
-            <p className="text-slate-500 text-sm mt-1">Manage institute details, contact, and WhatsApp.</p>
+            <p className="text-slate-500 text-sm mt-1">Manage institute details, branding, contact, and WhatsApp.</p>
           </div>
           <button type="submit" disabled={saving} className={btnPrimary}>
             <Save size={18} /> {saving ? "Saving..." : "Save Changes"}
@@ -75,6 +76,22 @@ export default function SettingsPage() {
             <div><label className={labelClass}>Instagram</label><input name="instagram" className={inputClass} value={settings.instagram || ""} onChange={handleChange} /></div>
             <div><label className={labelClass}>Twitter</label><input name="twitter" className={inputClass} value={settings.twitter || ""} onChange={handleChange} /></div>
             <div><label className={labelClass}>YouTube</label><input name="youtube" className={inputClass} value={settings.youtube || ""} onChange={handleChange} /></div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 space-y-6">
+            <h3 className="text-sm font-semibold text-slate-800">Branding & Documents</h3>
+            <ImageUploadField
+              label="Institute Logo"
+              value={settings.logoUrl || ""}
+              onChange={(url) => setSettings({ ...settings, logoUrl: url })}
+              hint="Used on fee receipts and official documents."
+            />
+            <ImageUploadField
+              label="Authorized Signature"
+              value={settings.authorizedSignatureUrl || ""}
+              onChange={(url) => setSettings({ ...settings, authorizedSignatureUrl: url })}
+              hint="PNG with transparent background recommended. Appears on receipts and certificates."
+            />
           </div>
         </div>
       </form>

@@ -32,6 +32,8 @@ import { adminApi } from "@/lib/adminApi";
 import { createApprovalRequest } from "@/lib/approvalService";
 import { isSuperAdmin } from "@/lib/rbac";
 import { logAudit } from "@/lib/auditService";
+import { DEFAULT_SETTINGS, subscribeToSettings } from "@/lib/settingsService";
+import type { InstituteSettings } from "@/types/erp";
 
 export default function FeeManagementPage() {
   const { user } = useAuth();
@@ -39,6 +41,7 @@ export default function FeeManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
+  const [instituteSettings, setInstituteSettings] = useState<InstituteSettings>(DEFAULT_SETTINGS);
   
   // Analytics State
   const [stats, setStats] = useState({
@@ -77,6 +80,10 @@ export default function FeeManagementPage() {
 
   useEffect(() => {
     fetchFeeRecords();
+  }, []);
+
+  useEffect(() => {
+    return subscribeToSettings(setInstituteSettings);
   }, []);
 
   const calculateAnalytics = (records: any[]) => {
@@ -306,6 +313,8 @@ export default function FeeManagementPage() {
           previouslyPaid: currentRecord.paidAmount,
           currentPayment: amountPaid,
           remainingBalance: newRemainingFee,
+          logoUrl: instituteSettings.logoUrl,
+          authorizedSignatureUrl: instituteSettings.authorizedSignatureUrl,
         }, { includePrintButton: true });
 
         await setDoc(doc(db, "receipts", receiptNo), {
@@ -314,6 +323,9 @@ export default function FeeManagementPage() {
           studentName: currentRecord.studentName,
           amount: amountPaid,
           course: currentRecord.course,
+          remainingAmount: newRemainingFee,
+          paymentMode: newInstallment.method,
+          receiptHtml,
           createdAt: serverTimestamp(),
         });
 

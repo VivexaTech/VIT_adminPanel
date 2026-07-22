@@ -4,14 +4,12 @@ import { useState, useRef, useEffect } from "react";
 import PageTransition from "@/components/admin/PageTransition";
 import {
   UploadCloud,
-  Printer,
   Search,
   CheckCircle,
   X,
   Loader2,
 } from "lucide-react";
 import html2canvas from "html2canvas-pro";
-import { jsPDF } from "jspdf";
 import { QRCodeSVG } from "qrcode.react";
 import {
   collection,
@@ -20,18 +18,19 @@ import {
   getDocs,
   getDoc,
   doc,
-  setDoc,
-  serverTimestamp,
   orderBy,
   limit,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
-import { btnPrimary, btnSecondary, inputClass, labelClass } from "@/lib/theme";
+import { btnPrimary, inputClass, labelClass } from "@/lib/theme";
 import { checkCertificateEligibility, type CertificateEligibility } from "@/lib/certificateEligibility";
 import { issueCertificate, studentHasCertificate } from "@/lib/certificateService";
 import { useAuth } from "@/context/AuthContext";
 import { logAudit } from "@/lib/auditService";
+import { DEFAULT_SETTINGS, subscribeToSettings } from "@/lib/settingsService";
+import { useToast } from "@/context/ToastContext";
+import type { InstituteSettings } from "@/types/erp";
 
 const CERT_CLASSES = new Set([
   "cert-layer",
@@ -44,6 +43,8 @@ const CERT_CLASSES = new Set([
   "id-num",
   "grade",
   "qr-code",
+  "authorized-sign",
+  "authorized-sign-label",
 ]);
 
 function stripTailwindFromClone(root: Element) {
@@ -55,13 +56,23 @@ function stripTailwindFromClone(root: Element) {
   });
 }
 
+type FetchedStudent = {
+  id: string;
+  fullName?: string;
+  course?: string;
+  courseDuration?: string;
+  courseId?: string;
+  enrolledCourse?: { courseId?: string };
+  [key: string]: unknown;
+};
+
 export default function CertificateGeneratorPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const certRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // States
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [processingState, setProcessingState] = useState("");
@@ -70,8 +81,9 @@ export default function CertificateGeneratorPage() {
   const [studentIdInput, setStudentIdInput] = useState("");
   const [fetchingStudent, setFetchingStudent] = useState(false);
   const [fetchError, setFetchError] = useState("");
-  const [fetchedStudent, setFetchedStudent] = useState<any>(null);
+  const [fetchedStudent, setFetchedStudent] = useState<FetchedStudent | null>(null);
   const [eligibility, setEligibility] = useState<CertificateEligibility | null>(null);
+  const [instituteSettings, setInstituteSettings] = useState<InstituteSettings>(DEFAULT_SETTINGS);
 
   const [certData, setCertData] = useState({
     name: "Student Name",
@@ -87,12 +99,15 @@ export default function CertificateGeneratorPage() {
     url: "https://vit.vivexatech.in/verify",
   });
 
-  // Calculate dynamic scale for preview
+  useEffect(() => {
+    return subscribeToSettings(setInstituteSettings);
+  }, []);
+
   useEffect(() => {
     const updateScale = () => {
       if (containerRef.current) {
         const { width } = containerRef.current.getBoundingClientRect();
-        setScale(width / 3508); // 3508 is the base width
+        setScale(width / 3508);
       }
     };
     updateScale();
@@ -107,11 +122,11 @@ export default function CertificateGeneratorPage() {
 
     try {
       const sid = studentIdInput.trim();
-      let student: Record<string, unknown> | null = null;
+      let student: FetchedStudent | null = null;
 
       const studentSnap = await getDoc(doc(db, "students", sid));
       if (studentSnap.exists()) {
-        student = { id: studentSnap.id, ...studentSnap.data() };
+        student = { id: studentSnap.id, ...studentSnap.data() } as FetchedStudent;
       } else {
         const q = query(collection(db, "admissions"), where("studentId", "==", sid));
         const querySnapshot = await getDocs(q);
@@ -120,7 +135,7 @@ export default function CertificateGeneratorPage() {
           setFetchingStudent(false);
           return;
         }
-        student = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
+        student = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as FetchedStudent;
       }
 
       const elig = await checkCertificateEligibility(sid);
@@ -148,7 +163,7 @@ export default function CertificateGeneratorPage() {
 
       if (!certSnap.empty) {
         const lastId = certSnap.docs[0].data().certificateId;
-        const parts = lastId.split("-");
+        const parts = String(lastId).split("-");
         if (parts.length === 3) {
           nextNum = parseInt(parts[2], 10) + 1;
         }
@@ -184,18 +199,16 @@ export default function CertificateGeneratorPage() {
     const certElement = certRef.current;
     if (!certElement) throw new Error("Certificate container not found");
 
-    // 1. Off-screen container (Fixed position to prevent scroll shifts)
     const printContainer = document.createElement("div");
-    printContainer.style.position = "fixed"; // 'absolute' ki jagah 'fixed' use karein
-    printContainer.style.top = "0px"; 
+    printContainer.style.position = "fixed";
+    printContainer.style.top = "0px";
     printContainer.style.left = "0px";
-    printContainer.style.zIndex = "-9999"; // Screen ke piche hide karein
-    printContainer.style.opacity = "0"; // Invisible rakhein
+    printContainer.style.zIndex = "-9999";
+    printContainer.style.opacity = "0";
     printContainer.style.pointerEvents = "none";
     printContainer.style.width = "3508px";
     printContainer.style.height = "2480px";
 
-    // 2. Clone and strip Tailwind utility classes (v4 uses lab()/oklch())
     const clone = certElement.cloneNode(true) as HTMLDivElement;
     stripTailwindFromClone(clone);
     clone.style.transform = "none";
@@ -206,28 +219,26 @@ export default function CertificateGeneratorPage() {
     printContainer.appendChild(clone);
     document.body.appendChild(printContainer);
 
-    // 3. Wait for Web Fonts and DOM Updates
     await document.fonts.ready;
-    await new Promise((resolve) => setTimeout(resolve, 300)); // Thoda extra time dein (300ms)
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     try {
       return await html2canvas(clone, {
-        scale: 1, 
-        width: 3508, 
-        height: 2480, 
+        scale: 1,
+        width: 3508,
+        height: 2480,
         useCORS: true,
         backgroundColor: "#ffffff",
-        windowWidth: 3508, 
-        windowHeight: 2480, 
-        scrollX: 0, // Very important: prevents horizontal shifting
-        scrollY: 0, // Very important: prevents vertical text shifting
+        windowWidth: 3508,
+        windowHeight: 2480,
+        scrollX: 0,
+        scrollY: 0,
         logging: false,
       });
     } catch (error) {
       console.error("Capture error:", error);
       throw error;
     } finally {
-      // 4. Cleanup
       if (document.body.contains(printContainer)) {
         document.body.removeChild(printContainer);
       }
@@ -270,7 +281,7 @@ export default function CertificateGeneratorPage() {
 
       xhr.onload = () => {
         if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
+          const response = JSON.parse(xhr.responseText) as { secure_url: string };
           resolve(response.secure_url);
         } else {
           reject(new Error(`Cloudinary upload failed (${xhr.status}): ${xhr.responseText || "Unknown error"}`));
@@ -304,44 +315,26 @@ export default function CertificateGeneratorPage() {
     });
   };
 
-  const handlePrintPDF = async () => {
-    if (!eligibility?.eligible) return alert("Student is not eligible for certificate issuance.");
-    setIsProcessing(true);
-    setUploadProgress(0);
-    try {
-      const canvas = await captureCertificate();
-      setProcessingState("Preparing PDF...");
-      const pdf = new jsPDF({
-        orientation: "landscape",
-        unit: "px",
-        format: [3508, 2480],
-      });
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 3508, 2480);
-      pdf.autoPrint();
-      window.open(pdf.output("bloburl"), "_blank");
-    } catch (err) {
-      console.error(err);
-      alert("Print failed.");
-    } finally {
-      setIsProcessing(false);
-      setProcessingState("");
-    }
-  };
-
   const handleUploadPNG = async () => {
-    if (!eligibility?.eligible) return alert("Student is not eligible for certificate issuance.");
-    if (!certData.grade) return alert("Please fill the grade manually.");
+    if (!eligibility?.eligible) {
+      showToast("error", "Student is not eligible for certificate issuance.");
+      return;
+    }
+    if (!certData.grade) {
+      showToast("error", "Please fill the grade manually.");
+      return;
+    }
     setIsProcessing(true);
     try {
       const canvas = await captureCertificate();
       const blob = await (await fetch(canvas.toDataURL("image/png"))).blob();
       const imageUrl = await uploadToCloudinary(blob, "image");
       await saveToFirebase(imageUrl, "");
-      alert("PNG Uploaded & Saved Successfully!");
+      showToast("success", "PNG uploaded and certificate saved successfully.");
       router.push("/secure-admin/certificates");
     } catch (err) {
       console.error(err);
-      alert("PNG Upload failed.");
+      showToast("error", "PNG upload failed.");
     } finally {
       setIsProcessing(false);
       setUploadProgress(0);
@@ -349,11 +342,13 @@ export default function CertificateGeneratorPage() {
     }
   };
 
+  const signatureUrl = instituteSettings.authorizedSignatureUrl?.trim() || "";
+
   return (
     <PageTransition>
       <div className="mb-6 sm:mb-8">
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1">Issue Smart Certificate</h1>
-        <p className="text-slate-500 text-sm">Fetch student details, assign grade, and export.</p>
+        <p className="text-slate-500 text-sm">Fetch student details, assign grade, and upload PNG.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
@@ -370,7 +365,6 @@ export default function CertificateGeneratorPage() {
               </div>
             )}
 
-            {/* Step 1: Fetch Student */}
             <div>
               <label className={labelClass}>1. Fetch Student</label>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -414,7 +408,6 @@ export default function CertificateGeneratorPage() {
               )}
             </div>
 
-            {/* Step 2: Form */}
             <div className="space-y-4 pt-4 border-t border-slate-100">
               <div>
                 <label className={labelClass}>Name</label>
@@ -461,18 +454,20 @@ export default function CertificateGeneratorPage() {
               </div>
             )}
 
+            {!signatureUrl && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                No authorized signature configured. Add one in Institute Settings to include it on certificates.
+              </p>
+            )}
+
             <div className="flex flex-col gap-3 pt-4 border-t border-slate-100">
               <button type="button" onClick={handleUploadPNG} disabled={!fetchedStudent || !eligibility?.eligible} className={btnPrimary + " w-full py-3 disabled:opacity-50"}>
                 <UploadCloud size={18} /> Upload PNG (Cloudinary)
-              </button>
-              <button type="button" onClick={handlePrintPDF} disabled={!fetchedStudent || !eligibility?.eligible} className={btnSecondary + " w-full disabled:opacity-50"}>
-                <Printer size={16} /> Print PDF
               </button>
             </div>
           </div>
         </div>
 
-        {/* Right Panel: Live Preview */}
         <div className="lg:col-span-8">
           <div
             className="bg-slate-100 border border-dashed border-slate-300 p-3 sm:p-6 rounded-2xl flex justify-center items-center overflow-x-auto"
@@ -507,6 +502,7 @@ export default function CertificateGeneratorPage() {
                     overflow: "hidden",
                   }}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/certificate-template.svg"
                     alt="Template"
@@ -559,6 +555,19 @@ export default function CertificateGeneratorPage() {
                       />
                     )}
                   </div>
+
+                  {signatureUrl && (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={signatureUrl}
+                        alt="Authorized Signature"
+                        className="cert-layer authorized-sign"
+                        crossOrigin="anonymous"
+                      />
+                      <div className="cert-layer authorized-sign-label">Authorized Signatory</div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -611,6 +620,28 @@ export default function CertificateGeneratorPage() {
   .grade { top: 80.8%; left: 57.5%; width: 13%; }
   
   .qr-code { top: 70.9%; left: 73.37%; width: 220px; height: 220px; padding: 10px; border: 2px solid #000; }
+
+  .authorized-sign {
+    top: 78%;
+    right: 8%;
+    left: auto;
+    width: 420px;
+    height: 160px;
+    object-fit: contain;
+    white-space: normal;
+  }
+
+  .authorized-sign-label {
+    top: 86%;
+    right: 8%;
+    left: auto;
+    width: 420px;
+    text-align: center;
+    font-size: 36px;
+    font-weight: 600;
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #334155;
+  }
 `}} />
 
     </PageTransition>

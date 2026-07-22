@@ -22,6 +22,9 @@ import {
   ChevronDown,
   ShieldCheck,
   ScrollText,
+  BadgePercent,
+  Megaphone,
+  GalleryHorizontal,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useEffect, useState } from "react";
@@ -51,6 +54,9 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   "Audit Logs": ScrollText,
   Analytics: ClipboardList,
   "Verify Tool": Award,
+  Discounts: BadgePercent,
+  "Offers & Notices": Megaphone,
+  "Website Banners": GalleryHorizontal,
 };
 
 export default function Sidebar({
