@@ -17,6 +17,8 @@ export const DEFAULT_SETTINGS: InstituteSettings = {
   youtube: "",
   logoUrl: "",
   authorizedSignatureUrl: "",
+  upiId: "",
+  upiPayeeName: "Vivexa Institute of Technology",
 };
 
 export function subscribeToSettings(

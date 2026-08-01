@@ -36,6 +36,13 @@ export type CreateStudentPayload = {
   status?: string;
 };
 
+export type AdmissionCourseItem = {
+  courseId: string;
+  courseTitle: string;
+  batch?: string;
+  batchId?: string;
+};
+
 export type CreateAdmissionPayload = {
   fullName: string;
   parentName?: string;
@@ -43,8 +50,13 @@ export type CreateAdmissionPayload = {
   email: string;
   phone: string;
   password?: string;
+  /** Primary / first course (backward compatible) */
   courseId: string;
   courseTitle: string;
+  /** Multiple courses in one admission */
+  courses?: AdmissionCourseItem[];
+  /** Display / certificate name e.g. "Python with React" */
+  courseDisplayName?: string;
   batch?: string;
   batchId?: string;
   qualification?: string;
@@ -55,10 +67,21 @@ export type CreateAdmissionPayload = {
   courseDuration?: string;
   nextDueDate?: string;
   totalCourseFee?: number;
+  /** Final discount amount in ₹ */
   discount?: number;
+  /** Selected discount document IDs */
+  discountIds?: string[];
+  /** Extra manual discount in ₹ */
+  manualDiscount?: number;
+  discountBreakdown?: {
+    items: { id: string; code: string; name: string; type: string; value: number; amountApplied: number }[];
+    manualAmount: number;
+  };
   admissionFeePaid?: number;
   paymentMethod?: string;
   notes?: string;
+  /** When set, links admission back to institute inquiry and marks it confirmed */
+  inquiryId?: string;
 };
 
 export type CreateStaffUserPayload = {

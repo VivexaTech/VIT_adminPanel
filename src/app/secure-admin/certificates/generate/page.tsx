@@ -564,8 +564,9 @@ export default function CertificateGeneratorPage() {
                         alt="Authorized Signature"
                         className="cert-layer authorized-sign"
                         crossOrigin="anonymous"
+                        style={{ width: "15%", height: "15%", top: "80%", right: "44%", left: "auto" }}
                       />
-                      <div className="cert-layer authorized-sign-label">Authorized Signatory</div>
+                     
                     </>
                   )}
                 </div>

@@ -178,6 +178,10 @@ export interface InstituteSettings {
   youtube?: string;
   logoUrl?: string;
   authorizedSignatureUrl?: string;
+  /** UPI VPA for fee collection QR (e.g. institute@okaxis) */
+  upiId?: string;
+  /** Payee name shown in UPI apps */
+  upiPayeeName?: string;
   updatedAt?: unknown;
 }
 

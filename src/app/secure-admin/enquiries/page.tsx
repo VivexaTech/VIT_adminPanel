@@ -94,7 +94,7 @@ export default function EnquiriesPage() {
     <PageTransition>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <MessageSquare className="text-[#6C3CE9]" size={26} /> Course Enquiries
+          <MessageSquare className="text-[#6C3CE9]" size={26} /> App Enquiries
         </h1>
         <p className="text-slate-500 text-sm mt-1">
           Enquiries submitted from the student app. Contact students and complete admission manually.

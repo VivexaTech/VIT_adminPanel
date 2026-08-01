@@ -112,8 +112,8 @@ export const PRIMARY_NAV: NavItem[] = [
   { name: "Study Materials", path: "/secure-admin/materials", permission: "manage_materials" },
   { name: "Leave Requests", path: "/secure-admin/leaves", permission: "manage_leaves" },
   { name: "Certificates", path: "/secure-admin/certificates", permission: "manage_certificates" },
-  { name: "Enquiries", path: "/secure-admin/enquiries", permission: "manage_enquiries" },
-  { name: "Admission Enquiries", path: "/secure-admin/admission-enquiries", permission: "manage_enquiries" },
+  { name: "Inquiry Management", path: "/secure-admin/admission-enquiries", permission: "manage_enquiries" },
+  { name: "App Enquiries", path: "/secure-admin/enquiries", permission: "manage_enquiries" },
   { name: "Settings", path: "/secure-admin/settings", permission: "manage_settings" },
 ];
 

@@ -55,7 +55,7 @@ export default function SettingsPage() {
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
               <Building2 className="text-[#6C3CE9]" size={26} /> Institute Settings
             </h1>
-            <p className="text-slate-500 text-sm mt-1">Manage institute details, branding, contact, and WhatsApp.</p>
+            <p className="text-slate-500 text-sm mt-1">Manage institute details, branding, contact, WhatsApp, and UPI payments.</p>
           </div>
           <button type="submit" disabled={saving} className={btnPrimary}>
             <Save size={18} /> {saving ? "Saving..." : "Save Changes"}
@@ -76,6 +76,35 @@ export default function SettingsPage() {
             <div><label className={labelClass}>Instagram</label><input name="instagram" className={inputClass} value={settings.instagram || ""} onChange={handleChange} /></div>
             <div><label className={labelClass}>Twitter</label><input name="twitter" className={inputClass} value={settings.twitter || ""} onChange={handleChange} /></div>
             <div><label className={labelClass}>YouTube</label><input name="youtube" className={inputClass} value={settings.youtube || ""} onChange={handleChange} /></div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 space-y-4">
+            <h3 className="text-sm font-semibold text-slate-800">UPI Payments</h3>
+            <p className="text-xs text-slate-500">
+              Used to generate payment QR codes when collecting fees via UPI during admission.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>UPI ID / VPA</label>
+                <input
+                  name="upiId"
+                  className={inputClass}
+                  value={settings.upiId || ""}
+                  onChange={handleChange}
+                  placeholder="institute@okaxis"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Payee Name</label>
+                <input
+                  name="upiPayeeName"
+                  className={inputClass}
+                  value={settings.upiPayeeName || ""}
+                  onChange={handleChange}
+                  placeholder="Vivexa Institute of Technology"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="pt-4 border-t border-slate-100 space-y-6">

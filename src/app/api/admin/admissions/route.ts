@@ -83,8 +83,10 @@ export async function POST(request: NextRequest) {
       email,
       phone,
       password,
-      courseId,
-      courseTitle,
+      courseId: bodyCourseId,
+      courseTitle: bodyCourseTitle,
+      courses: bodyCourses,
+      courseDisplayName,
       batch,
       batchId,
       qualification,
@@ -96,18 +98,50 @@ export async function POST(request: NextRequest) {
       nextDueDate,
       totalCourseFee,
       discount = 0,
+      discountIds = [],
+      manualDiscount = 0,
+      discountBreakdown,
       admissionFeePaid = 0,
       paymentMethod = "Cash",
       notes,
+      inquiryId,
     } = body;
 
     const parent = parentName || fatherName || "";
-    const course = courseTitle?.trim();
     const personalEmail = email?.trim().toLowerCase();
 
-    if (!fullName?.trim() || !personalEmail || !phone?.trim() || !course || !courseId) {
-      return NextResponse.json({ error: "Name, personal email, phone, and course are required." }, { status: 400 });
+    type CourseItem = { courseId: string; courseTitle: string; batch?: string; batchId?: string };
+    const courseList: CourseItem[] = Array.isArray(bodyCourses) && bodyCourses.length > 0
+      ? bodyCourses
+          .filter((c: CourseItem) => c?.courseId && c?.courseTitle)
+          .map((c: CourseItem) => ({
+            courseId: String(c.courseId),
+            courseTitle: String(c.courseTitle).trim(),
+            batch: c.batch ? String(c.batch) : undefined,
+            batchId: c.batchId ? String(c.batchId) : undefined,
+          }))
+      : bodyCourseId && bodyCourseTitle
+        ? [{
+            courseId: String(bodyCourseId),
+            courseTitle: String(bodyCourseTitle).trim(),
+            batch: batch ? String(batch) : undefined,
+            batchId: batchId ? String(batchId) : undefined,
+          }]
+        : [];
+
+    if (!fullName?.trim() || !personalEmail || !phone?.trim() || courseList.length === 0) {
+      return NextResponse.json({ error: "Name, personal email, phone, and at least one course are required." }, { status: 400 });
     }
+
+    const courseTitles = courseList.map((c) => c.courseTitle);
+    const displayName =
+      (typeof courseDisplayName === "string" && courseDisplayName.trim()) ||
+      (courseTitles.length > 1
+        ? courseTitles.join(" with ")
+        : courseTitles[0]);
+    const primary = courseList[0];
+    const courseId = primary.courseId;
+    const course = displayName;
 
     const totalFee = Number(totalCourseFee) || 0;
     const paidAmount = Number(admissionFeePaid) || 0;
@@ -123,11 +157,21 @@ export async function POST(request: NextRequest) {
     const db = getAdminDb();
     const auth = getAdminAuth();
 
-    const courseSnap = await db.collection("courses").doc(courseId).get();
-    const instructorName =
-      courseSnap.exists ? courseSnap.data()?.instructorName || courseSnap.data()?.instructor?.name || "Vivexa Instructor" : "Vivexa Instructor";
-
-    const enrollment = buildEnrollment(courseId, course, instructorName, batch, batchId);
+    const enrollments = await Promise.all(
+      courseList.map(async (item) => {
+        const courseSnap = await db.collection("courses").doc(item.courseId).get();
+        const instructorName = courseSnap.exists
+          ? courseSnap.data()?.instructorName || courseSnap.data()?.instructor?.name || "Vivexa Instructor"
+          : "Vivexa Instructor";
+        return buildEnrollment(
+          item.courseId,
+          item.courseTitle,
+          instructorName,
+          item.batch || batch || "",
+          item.batchId || batchId
+        );
+      })
+    );
 
     const emailQuery = await db.collection("students").where("personalEmail", "==", personalEmail).limit(1).get();
     const loginEmailQuery = emailQuery.empty
@@ -157,28 +201,30 @@ export async function POST(request: NextRequest) {
       }
 
       type EnrollmentEntry = ReturnType<typeof buildEnrollment>;
-      const existingCourses: EnrollmentEntry[] = data.enrolledCourses || [];
-      const alreadyEnrolled = existingCourses.some((e) => e.courseId === courseId);
-
-      const updatedCourses: EnrollmentEntry[] = alreadyEnrolled
-        ? existingCourses.map((e) => (e.courseId === courseId ? { ...e, ...enrollment } : e))
-        : [...existingCourses, enrollment];
+      let existingCourses: EnrollmentEntry[] = data.enrolledCourses || [];
+      for (const enrollment of enrollments) {
+        const alreadyEnrolled = existingCourses.some((e) => e.courseId === enrollment.courseId);
+        existingCourses = alreadyEnrolled
+          ? existingCourses.map((e) => (e.courseId === enrollment.courseId ? { ...e, ...enrollment } : e))
+          : [...existingCourses, enrollment];
+        await studentDoc.ref.collection("enrollments").doc(enrollment.courseId).set(enrollment, { merge: true });
+      }
 
       await studentDoc.ref.update({
-        enrolledCourses: updatedCourses,
-        enrolledCourse: updatedCourses[0] || null,
-        course: updatedCourses.map((c) => c.title).join(", "),
-        batch: batch?.trim() || data.batch || null,
+        enrolledCourses: existingCourses,
+        enrolledCourse: existingCourses[0] || null,
+        course: displayName,
+        courseDisplayName: displayName,
+        courseId: existingCourses[0]?.courseId || courseId,
+        batch: primary.batch?.trim() || batch?.trim() || data.batch || null,
         parentName: parent.trim() || data.parentName || null,
         personalEmail,
         stats: {
           ...(data.stats || {}),
-          enrolled: updatedCourses.length,
+          enrolled: existingCourses.length,
         },
         updatedAt: FieldValue.serverTimestamp(),
       });
-
-      await studentDoc.ref.collection("enrollments").doc(courseId).set(enrollment, { merge: true });
     } else {
       createdStudentPassword = password?.trim() || generateSixDigitPassword();
       if (!/^\d{6}$/.test(createdStudentPassword) && createdStudentPassword.length < 6) {
@@ -221,23 +267,26 @@ export async function POST(request: NextRequest) {
           email: loginEmail,
           personalEmail,
           phone: phone.trim(),
-          course,
+          course: displayName,
+          courseDisplayName: displayName,
           courseId,
-          batch: batch?.trim() || null,
+          batch: primary.batch?.trim() || batch?.trim() || null,
           address: fullAddress,
           qualification: qualification?.trim() || "",
           joinDate,
           status: "Active",
           role: "student",
-          enrolledCourses: [enrollment],
-          enrolledCourse: enrollment,
-          stats: { enrolled: 1, completed: 0, certificates: 0, pendingFee: "₹0" },
+          enrolledCourses: enrollments,
+          enrolledCourse: enrollments[0],
+          stats: { enrolled: enrollments.length, completed: 0, certificates: 0, pendingFee: "₹0" },
           preferences: { inAppNotifications: true, emailAlerts: false },
           mustChangePassword: true,
           createdAt: FieldValue.serverTimestamp(),
         });
 
-      await db.collection("students").doc(studentId).collection("enrollments").doc(courseId).set(enrollment);
+      for (const enrollment of enrollments) {
+        await db.collection("students").doc(studentId).collection("enrollments").doc(enrollment.courseId).set(enrollment);
+      }
     }
 
     let paymentStatus = "Pending";
@@ -254,8 +303,15 @@ export async function POST(request: NextRequest) {
       personalEmail,
       phone: phone.trim(),
       course,
+      courseDisplayName: displayName,
       courseId,
-      batch: batch?.trim() || null,
+      courses: courseList.map((c) => ({
+        courseId: c.courseId,
+        courseTitle: c.courseTitle,
+        batch: c.batch || null,
+        batchId: c.batchId || null,
+      })),
+      batch: primary.batch?.trim() || batch?.trim() || null,
       qualification: qualification?.trim() || "",
       address: address?.trim() || "",
       city: city?.trim() || "",
@@ -263,9 +319,40 @@ export async function POST(request: NextRequest) {
       admissionDate: admissionDate || new Date().toISOString().split("T")[0],
       courseDuration: courseDuration || "",
       notes: notes?.trim() || "",
+      discount: discountNum,
+      discountIds: Array.isArray(discountIds) ? discountIds : [],
+      manualDiscount: Number(manualDiscount) || 0,
+      discountBreakdown: discountBreakdown || null,
       isNewStudent,
+      inquiryId: typeof inquiryId === "string" && inquiryId.trim() ? inquiryId.trim() : null,
       createdAt: FieldValue.serverTimestamp(),
     });
+
+    if (Array.isArray(discountIds) && discountIds.length > 0) {
+      for (const did of discountIds) {
+        if (typeof did !== "string" || !did.trim()) continue;
+        try {
+          await db.collection("discounts").doc(did.trim()).update({
+            usedCount: FieldValue.increment(1),
+            updatedAt: new Date().toISOString(),
+          });
+        } catch {
+          /* discount doc may not exist */
+        }
+      }
+    }
+
+    if (typeof inquiryId === "string" && inquiryId.trim()) {
+      await db.collection("institute_inquiries").doc(inquiryId.trim()).set(
+        {
+          status: "Admission Confirmed",
+          admissionId: admissionRef.id,
+          convertedAt: new Date().toISOString(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
 
     const feeRef = db.collection("student_fees").doc(studentId);
     const feeSnap = await feeRef.get();
@@ -288,10 +375,11 @@ export async function POST(request: NextRequest) {
         studentId,
         studentName: fullName.trim(),
         course,
-        courses: [course],
+        courses: courseTitles,
         totalFee: actualTotal,
         originalFee: totalFee,
         discount: discountNum,
+        discountBreakdown: discountBreakdown || null,
         paidAmount,
         remainingFee,
         paymentStatus,
@@ -327,19 +415,34 @@ export async function POST(request: NextRequest) {
     } else {
       const existing = feeSnap.data()!;
       const courses: string[] = existing.courses || [existing.course].filter(Boolean);
-      if (!courses.includes(course)) courses.push(course);
+      for (const title of courseTitles) {
+        if (!courses.includes(title)) courses.push(title);
+      }
+      if (!courses.includes(displayName) && courseTitles.length > 1) {
+        /* display name is aggregate — keep individual titles */
+      }
       await feeRef.update({
         courses,
-        course: courses.join(", "),
+        course: displayName,
         totalFee: (existing.totalFee || 0) + actualTotal,
         paidAmount: (existing.paidAmount || 0) + paidAmount,
         remainingFee: (existing.remainingFee || 0) + remainingFee,
+        discount: (existing.discount || 0) + discountNum,
         updatedAt: FieldValue.serverTimestamp(),
       });
     }
 
-    if (batchId?.trim()) {
-      const batchRef = db.collection("batches").doc(batchId.trim());
+    const batchIdsToAdd = [
+      ...new Set(
+        courseList
+          .map((c) => c.batchId?.trim())
+          .filter(Boolean)
+          .concat(batchId?.trim() ? [batchId.trim()] : [])
+      ),
+    ] as string[];
+
+    for (const bid of batchIdsToAdd) {
+      const batchRef = db.collection("batches").doc(bid);
       const batchSnap = await batchRef.get();
       if (batchSnap.exists) {
         const ids: string[] = batchSnap.data()?.studentIds || [];
