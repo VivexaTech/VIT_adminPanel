@@ -27,13 +27,18 @@ function formatNotificationTime(date = new Date()): string {
 async function generateReceiptNoServer(db: Firestore): Promise<string> {
   const year = new Date().getFullYear().toString();
   const counterRef = db.collection("metadata").doc(`receipt_counter_${year}`);
-  const count = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(counterRef);
-    const next = (snap.exists ? snap.data()?.count || 0 : 0) + 1;
-    tx.set(counterRef, { count: next, year: Number(year) }, { merge: true });
-    return next;
-  });
-  return `VIT-REC-${year}-${count.toString().padStart(3, "0")}`;
+  try {
+    const count = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(counterRef);
+      const next = (snap.exists ? snap.data()?.count || 0 : 0) + 1;
+      tx.set(counterRef, { count: next, year: Number(year) }, { merge: true });
+      return next;
+    });
+    return `VIT-REC-${year}-${count.toString().padStart(3, "0")}`;
+  } catch (err) {
+    console.error("Server receipt counter failed, using fallback:", err);
+    return `VIT-REC-${year}-${Date.now().toString().slice(-6)}`;
+  }
 }
 
 function buildEnrollment(
@@ -105,6 +110,8 @@ export async function POST(request: NextRequest) {
       paymentMethod = "Cash",
       notes,
       inquiryId,
+      studentPhotoUrl = "",
+      aadhaarUrl = "",
     } = body;
 
     const parent = parentName || fatherName || "";
@@ -281,6 +288,8 @@ export async function POST(request: NextRequest) {
           stats: { enrolled: enrollments.length, completed: 0, certificates: 0, pendingFee: "₹0" },
           preferences: { inAppNotifications: true, emailAlerts: false },
           mustChangePassword: true,
+          studentPhotoUrl: typeof studentPhotoUrl === "string" ? studentPhotoUrl : "",
+          aadhaarUrl: typeof aadhaarUrl === "string" ? aadhaarUrl : "",
           createdAt: FieldValue.serverTimestamp(),
         });
 
@@ -319,6 +328,8 @@ export async function POST(request: NextRequest) {
       admissionDate: admissionDate || new Date().toISOString().split("T")[0],
       courseDuration: courseDuration || "",
       notes: notes?.trim() || "",
+      studentPhotoUrl: typeof studentPhotoUrl === "string" ? studentPhotoUrl : "",
+      aadhaarUrl: typeof aadhaarUrl === "string" ? aadhaarUrl : "",
       discount: discountNum,
       discountIds: Array.isArray(discountIds) ? discountIds : [],
       manualDiscount: Number(manualDiscount) || 0,
@@ -481,43 +492,70 @@ export async function POST(request: NextRequest) {
           {
             receiptNo,
             date: paymentDate,
+            paymentDate,
             studentName: fullName.trim(),
             studentId,
             mobile: phone.trim(),
             courseName: course,
+            batchName: primary.batch?.trim() || batch?.trim() || "",
+            feeType: "Admission Fee",
             paymentMode: paymentMethod,
+            transactionRef: "",
             lineItems: [{ description: `Admission fee - ${course}`, amount: paidAmount }],
+            originalFee:
+              Number(feeAfter.originalFee) ||
+              totalFee ||
+              totalFeeForReceipt + (Number(feeAfter.discount) || discountNum),
+            discount: Number(feeAfter.discount) || discountNum,
+            discountNote:
+              Array.isArray(discountIds) && discountIds.length
+                ? `${discountIds.length} discount(s) applied`
+                : undefined,
             totalFee: totalFeeForReceipt,
             previouslyPaid,
             currentPayment: paidAmount,
             remainingBalance: remainingForReceipt,
             logoUrl,
             authorizedSignatureUrl,
+            instituteName:
+              typeof settingsData.instituteName === "string" ? settingsData.instituteName : undefined,
+            institutePhone: typeof settingsData.phone === "string" ? settingsData.phone : undefined,
+            instituteEmail: typeof settingsData.email === "string" ? settingsData.email : undefined,
+            instituteAddress:
+              typeof settingsData.address === "string" ? settingsData.address : undefined,
           },
-          { includePrintButton: true }
+          { includePrintButton: false }
         );
 
-        await db.collection("receipts").doc(receiptNo).set({
-          receiptNo,
-          studentId,
-          studentName: fullName.trim(),
-          amount: paidAmount,
-          course,
-          remainingAmount: remainingForReceipt,
-          paymentMode: paymentMethod,
-          receiptHtml,
-          createdAt: FieldValue.serverTimestamp(),
-        });
+        try {
+          await db.collection("receipts").doc(receiptNo).set({
+            receiptNo,
+            studentId,
+            studentName: fullName.trim(),
+            amount: paidAmount,
+            course,
+            remainingAmount: remainingForReceipt,
+            paymentMode: paymentMethod,
+            receiptHtml,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+        } catch (saveErr) {
+          console.error("Failed to persist receipt doc (HTML still returned):", saveErr);
+        }
 
-        await db.collection("students").doc(studentId).collection("notifications").add({
-          type: "fee_receipt",
-          title: "Fee Receipt Generated",
-          message: `Receipt ${receiptNo} for ₹${paidAmount.toLocaleString("en-IN")} has been issued.`,
-          time: formatNotificationTime(),
-          isRead: false,
-          route: "/profile/fee",
-          createdAt: FieldValue.serverTimestamp(),
-        });
+        try {
+          await db.collection("students").doc(studentId).collection("notifications").add({
+            type: "fee_receipt",
+            title: "Fee Receipt Generated",
+            message: `Receipt ${receiptNo} for ₹${paidAmount.toLocaleString("en-IN")} has been issued.`,
+            time: formatNotificationTime(),
+            isRead: false,
+            route: "/profile/fee",
+            createdAt: FieldValue.serverTimestamp(),
+          });
+        } catch (notifErr) {
+          console.error("Failed to add receipt notification:", notifErr);
+        }
 
         if (isEmailConfigured()) {
           try {
@@ -533,8 +571,11 @@ export async function POST(request: NextRequest) {
         }
       } catch (receiptErr) {
         console.error("Admission fee receipt generation failed:", receiptErr);
-        receiptNo = undefined;
-        receiptHtml = undefined;
+        // Keep any partial receiptHtml if build succeeded before a later failure
+        if (!receiptHtml) {
+          receiptNo = undefined;
+          receiptHtml = undefined;
+        }
       }
     }
 

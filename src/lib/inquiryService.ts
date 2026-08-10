@@ -81,27 +81,98 @@ export async function generateInquiryId(): Promise<string> {
   return `INQ-${year}-${String(next).padStart(4, "0")}`;
 }
 
+function mapAppEnquiry(id: string, data: Record<string, unknown>): Inquiry {
+  const statusRaw = String(data.status || "pending").toLowerCase();
+  let status: InquiryStatus = "New";
+  if (statusRaw === "contacted") status = "Contacted";
+  else if (statusRaw === "converted") status = "Admission Confirmed";
+
+  return {
+    id: `app_${id}`,
+    inquiryId: `APP-${id.slice(0, 8).toUpperCase()}`,
+    fullName: String(data.studentName || data.fullName || ""),
+    age: null,
+    gender: "",
+    phone: String(data.phone || ""),
+    email: String(data.email || ""),
+    educationStatus: "",
+    occupation: "",
+    courseId: String(data.courseId || ""),
+    courseTitle: String(data.courseTitle || ""),
+    source: "Online",
+    studentPhotoUrl: "",
+    aadhaarUrl: "",
+    description: String(data.message || data.note || "Submitted from Vivexa Learn app"),
+    internalNotes: `Legacy app enquiry id: ${id}`,
+    status,
+    priority: "Medium",
+    nextFollowUpDate: null,
+    lastContactDate: null,
+    followUpCount: 0,
+    nextAction: "",
+    followUpHistory: [],
+    createdBy: "app",
+    createdByName: "Student App",
+    createdAt: (data.createdAt as Inquiry["createdAt"]) || null,
+    updatedAt: (data.updatedAt as Inquiry["updatedAt"]) || null,
+    admissionId: null,
+    convertedAt: status === "Admission Confirmed" ? new Date().toISOString() : null,
+  };
+}
+
+/**
+ * Unified inquiry feed: CRM (`institute_inquiries`) + app enquiries (`course_enquiries`).
+ * App rows are mapped with source "Online" and prefixed ids so existing CRM edits stay isolated.
+ */
 export function subscribeToInquiries(
   onData: (items: Inquiry[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  return onSnapshot(
-    collection(db, INQUIRIES_COLLECTION),
-    (snap) => {
-      const list = snap.docs.map((d) => mapInquiry(d.id, d.data() as Record<string, unknown>));
-      list.sort((a, b) => {
-        const ta = a.createdAt && typeof a.createdAt === "object" && a.createdAt.toDate
+  let crm: Inquiry[] = [];
+  let app: Inquiry[] = [];
+
+  const emit = () => {
+    const merged = [...crm, ...app];
+    merged.sort((a, b) => {
+      const ta =
+        a.createdAt && typeof a.createdAt === "object" && a.createdAt.toDate
           ? a.createdAt.toDate().getTime()
           : 0;
-        const tb = b.createdAt && typeof b.createdAt === "object" && b.createdAt.toDate
+      const tb =
+        b.createdAt && typeof b.createdAt === "object" && b.createdAt.toDate
           ? b.createdAt.toDate().getTime()
           : 0;
-        return tb - ta;
-      });
-      onData(list);
+      return tb - ta;
+    });
+    onData(merged);
+  };
+
+  const unsubCrm = onSnapshot(
+    collection(db, INQUIRIES_COLLECTION),
+    (snap) => {
+      crm = snap.docs.map((d) => mapInquiry(d.id, d.data() as Record<string, unknown>));
+      emit();
     },
     (err) => onError?.(err)
   );
+
+  const unsubApp = onSnapshot(
+    collection(db, "course_enquiries"),
+    (snap) => {
+      app = snap.docs.map((d) => mapAppEnquiry(d.id, d.data() as Record<string, unknown>));
+      emit();
+    },
+    () => {
+      // App collection may be empty / permission-limited; still emit CRM data
+      app = [];
+      emit();
+    }
+  );
+
+  return () => {
+    unsubCrm();
+    unsubApp();
+  };
 }
 
 export async function getInquiryById(id: string): Promise<Inquiry | null> {
@@ -163,6 +234,27 @@ export async function updateInquiry(
   id: string,
   input: Partial<InquiryFormInput> & { status?: InquiryStatus; priority?: Inquiry["priority"] }
 ): Promise<void> {
+  const appId = id.startsWith("app_") ? id.slice(4) : null;
+  if (appId) {
+    const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
+    if (input.fullName !== undefined) payload.studentName = input.fullName;
+    if (input.phone !== undefined) payload.phone = input.phone;
+    if (input.email !== undefined) payload.email = input.email;
+    if (input.courseId !== undefined) payload.courseId = input.courseId;
+    if (input.courseTitle !== undefined) payload.courseTitle = input.courseTitle;
+    if (input.status !== undefined) {
+      payload.crmStatus = input.status;
+      payload.status =
+        input.status === "Admission Confirmed"
+          ? "converted"
+          : input.status === "Contacted" || input.status === "Follow Up" || input.status === "Interested"
+            ? "contacted"
+            : "pending";
+    }
+    await updateDoc(doc(db, "course_enquiries", appId), payload);
+    return;
+  }
+
   const payload: Record<string, unknown> = {
     updatedAt: serverTimestamp(),
   };
@@ -201,7 +293,26 @@ export async function updateInquiry(
   await updateDoc(doc(db, INQUIRIES_COLLECTION, id), payload);
 }
 
+function appEnquiryRawId(id: string): string | null {
+  return id.startsWith("app_") ? id.slice(4) : null;
+}
+
 export async function updateInquiryStatus(id: string, status: InquiryStatus): Promise<void> {
+  const appId = appEnquiryRawId(id);
+  if (appId) {
+    const appStatus =
+      status === "Admission Confirmed"
+        ? "converted"
+        : status === "Contacted" || status === "Follow Up" || status === "Interested"
+          ? "contacted"
+          : "pending";
+    await updateDoc(doc(db, "course_enquiries", appId), {
+      status: appStatus,
+      crmStatus: status,
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
   await updateDoc(doc(db, INQUIRIES_COLLECTION, id), {
     status,
     updatedAt: serverTimestamp(),
@@ -219,6 +330,18 @@ export async function addFollowUp(
   },
   actor: { uid: string; name: string }
 ): Promise<void> {
+  if (inquiryId.startsWith("app_")) {
+    const appId = inquiryId.slice(4);
+    await updateDoc(doc(db, "course_enquiries", appId), {
+      status: "contacted",
+      crmStatus: entry.status || "Follow Up",
+      lastNote: entry.note.trim(),
+      nextFollowUpDate: entry.nextFollowUpDate || null,
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+
   const ref = doc(db, INQUIRIES_COLLECTION, inquiryId);
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("Inquiry not found");
@@ -260,6 +383,16 @@ export async function markInquiryAdmissionConfirmed(
   inquiryId: string,
   admissionId: string
 ): Promise<void> {
+  if (inquiryId.startsWith("app_")) {
+    await updateDoc(doc(db, "course_enquiries", inquiryId.slice(4)), {
+      status: "converted",
+      crmStatus: "Admission Confirmed",
+      admissionId,
+      convertedAt: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
   await updateDoc(doc(db, INQUIRIES_COLLECTION, inquiryId), {
     status: "Admission Confirmed",
     admissionId,

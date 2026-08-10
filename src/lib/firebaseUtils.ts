@@ -41,21 +41,21 @@ export const generateReceiptId = async (): Promise<string> => {
   try {
     const newCount = await runTransaction(db, async (transaction) => {
       const counterDoc = await transaction.get(counterRef);
-      
+
       let count = 1;
       if (counterDoc.exists()) {
         count = (counterDoc.data().count || 0) + 1;
       }
 
-      transaction.set(counterRef, { count }, { merge: true });
+      transaction.set(counterRef, { count, year: Number(currentYear) }, { merge: true });
       return count;
     });
 
     const formattedNumber = newCount.toString().padStart(3, "0");
     return `VIT-REC-${currentYear}-${formattedNumber}`;
   } catch (error) {
-    console.error("Error generating Receipt ID:", error);
-    throw new Error("Failed to generate Receipt ID");
+    console.error("Error generating Receipt ID via counter, using fallback:", error);
+    return `VIT-REC-${currentYear}-${Date.now().toString().slice(-6)}`;
   }
 };
 

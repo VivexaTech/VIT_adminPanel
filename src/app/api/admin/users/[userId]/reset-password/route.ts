@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySuperAdminRequest } from "@/lib/verifyAdminRequest";
+import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { generateSecurePassword, validatePasswordStrength } from "@/lib/passwordUtils";
@@ -11,7 +11,7 @@ type Params = { params: Promise<{ userId: string }> };
 
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const performer = await verifySuperAdminRequest(request);
+    const performer = await verifyAdminNotTrainerRequest(request);
     const { userId } = await params;
     const body = await request.json().catch(() => ({}));
     const { password, useGeneratedPassword = true } = body;
@@ -28,6 +28,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     const userData = userSnap.data()!;
     if (userData.email === performer.email) {
       return NextResponse.json({ error: "Use Change Password to update your own password." }, { status: 400 });
+    }
+    if (performer.role !== "Super Admin" && userData.role === "Super Admin") {
+      return NextResponse.json({ error: "Only Super Admin can reset Super Admin passwords." }, { status: 403 });
     }
 
     const uid = userData.uid as string;

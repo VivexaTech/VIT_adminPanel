@@ -34,6 +34,7 @@ import { isSuperAdmin } from "@/lib/rbac";
 import { logAudit } from "@/lib/auditService";
 import { DEFAULT_SETTINGS, subscribeToSettings } from "@/lib/settingsService";
 import type { InstituteSettings } from "@/types/erp";
+import ReceiptPreviewModal from "@/components/admin/ReceiptPreviewModal";
 
 export default function FeeManagementPage() {
   const { user } = useAuth();
@@ -57,6 +58,11 @@ export default function FeeManagementPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [currentRecord, setCurrentRecord] = useState<any>(null);
+  const [receiptSuccess, setReceiptSuccess] = useState<{
+    receiptNo: string;
+    receiptHtml: string;
+    studentId: string;
+  } | null>(null);
 
   // Smart Form State
   const [studentIdInput, setStudentIdInput] = useState("");
@@ -301,51 +307,90 @@ export default function FeeManagementPage() {
 
       try {
         const receiptNo = await generateReceiptId();
+        const studentSnapForReceipt = await getDoc(
+          doc(db, "students", currentRecord.studentId || currentRecord.id)
+        );
+        const studentDataForReceipt = studentSnapForReceipt.data() || {};
+        const payableFee = Number(currentRecord.totalFee) || 0;
+        const originalFee =
+          Number(currentRecord.originalFee) > 0
+            ? Number(currentRecord.originalFee)
+            : payableFee + discount;
         const receiptHtml = buildReceiptHtml({
           receiptNo,
           date: newInstallment.date,
+          paymentDate: newInstallment.date,
           studentName: currentRecord.studentName,
           studentId: currentRecord.studentId || currentRecord.id,
+          mobile: studentDataForReceipt.phone || "",
           courseName: currentRecord.course,
+          batchName: studentDataForReceipt.batch || "",
+          feeType: "Course Fee Payment",
           paymentMode: newInstallment.method,
+          transactionRef: newInstallment.transactionId || "",
           lineItems: [{ description: "Course Fee Payment", amount: amountPaid }],
-          totalFee: currentRecord.totalFee - discount,
+          originalFee,
+          discount,
+          totalFee: payableFee,
           previouslyPaid: currentRecord.paidAmount,
           currentPayment: amountPaid,
           remainingBalance: newRemainingFee,
           logoUrl: instituteSettings.logoUrl,
           authorizedSignatureUrl: instituteSettings.authorizedSignatureUrl,
-        }, { includePrintButton: true });
+          instituteName: instituteSettings.instituteName,
+          institutePhone: instituteSettings.phone,
+          instituteEmail: instituteSettings.email,
+          instituteAddress: instituteSettings.address,
+        }, { includePrintButton: false });
 
-        await setDoc(doc(db, "receipts", receiptNo), {
-          receiptNo,
-          studentId: currentRecord.studentId || currentRecord.id,
-          studentName: currentRecord.studentName,
-          amount: amountPaid,
-          course: currentRecord.course,
-          remainingAmount: newRemainingFee,
-          paymentMode: newInstallment.method,
-          receiptHtml,
-          createdAt: serverTimestamp(),
-        });
-
-        const studentSnap = await getDoc(doc(db, "students", currentRecord.studentId || currentRecord.id));
-        const studentEmail = studentSnap.data()?.personalEmail || studentSnap.data()?.email;
-        if (studentEmail) {
-          await adminApi.sendFeeReceiptEmail({
-            to: studentEmail,
-            studentName: currentRecord.studentName,
-            receiptHtml,
+        try {
+          await setDoc(doc(db, "receipts", receiptNo), {
             receiptNo,
+            studentId: currentRecord.studentId || currentRecord.id,
+            studentName: currentRecord.studentName,
+            amount: amountPaid,
+            course: currentRecord.course,
+            remainingAmount: newRemainingFee,
+            paymentMode: newInstallment.method,
+            receiptHtml,
+            createdAt: serverTimestamp(),
           });
+        } catch (saveErr) {
+          console.error("Failed to save receipt document:", saveErr);
         }
-        await notifyFeeReceipt({
-          studentId: currentRecord.studentId || currentRecord.id,
+
+        const studentEmail =
+          studentDataForReceipt.personalEmail || studentDataForReceipt.email;
+        if (studentEmail) {
+          try {
+            await adminApi.sendFeeReceiptEmail({
+              to: studentEmail,
+              studentName: currentRecord.studentName,
+              receiptHtml,
+              receiptNo,
+            });
+          } catch (emailErr) {
+            console.error("Receipt email failed:", emailErr);
+          }
+        }
+        try {
+          await notifyFeeReceipt({
+            studentId: currentRecord.studentId || currentRecord.id,
+            receiptNo,
+            amount: amountPaid,
+          });
+        } catch (notifErr) {
+          console.error("Receipt notification failed:", notifErr);
+        }
+
+        setReceiptSuccess({
           receiptNo,
-          amount: amountPaid,
+          receiptHtml,
+          studentId: currentRecord.studentId || currentRecord.id,
         });
       } catch (receiptErr) {
         console.error("Receipt generation/email failed:", receiptErr);
+        alert("Payment saved, but receipt could not be generated. Check Firestore metadata permissions.");
       }
 
       await logAudit(user, "fee_updated", { resourceId: currentRecord.id, details: paymentStatus });
@@ -678,6 +723,17 @@ export default function FeeManagementPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {receiptSuccess && (
+        <ReceiptPreviewModal
+          open={!!receiptSuccess}
+          title="Fee Receipt"
+          receiptNo={receiptSuccess.receiptNo}
+          studentId={receiptSuccess.studentId}
+          receiptHtml={receiptSuccess.receiptHtml}
+          onClose={() => setReceiptSuccess(null)}
+        />
       )}
     </PageTransition>
   );

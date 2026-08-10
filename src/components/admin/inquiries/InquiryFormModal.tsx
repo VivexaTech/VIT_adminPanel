@@ -28,7 +28,6 @@ import {
   type InquiryGender,
 } from "@/types/inquiry";
 import type { Course } from "@/types/course";
-import InquiryDocUpload from "./InquiryDocUpload";
 import { findInquiriesByPhone } from "@/lib/inquiryService";
 
 type Props = {
@@ -397,22 +396,6 @@ export default function InquiryFormModal({
                     ))}
                   </select>
                 </div>
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-sm font-semibold text-[#6C3CE9] mb-3">Documents (optional)</h3>
-              <div className={formGrid}>
-                <InquiryDocUpload
-                  label="Student Photo"
-                  value={form.studentPhotoUrl || ""}
-                  onChange={(url) => set("studentPhotoUrl", url)}
-                />
-                <InquiryDocUpload
-                  label="Aadhaar Card"
-                  value={form.aadhaarUrl || ""}
-                  onChange={(url) => set("aadhaarUrl", url)}
-                />
               </div>
             </section>
 

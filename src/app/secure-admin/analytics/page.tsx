@@ -64,14 +64,20 @@ export default function AnalyticsPage() {
           monthsCount[`${monthNames[d.getMonth()]} ${d.getFullYear().toString().substring(2)}`] = 0;
         }
 
-        admissionsSnap.forEach((doc) => {
-          const dateStr = doc.data().date;
-          if (dateStr) {
-            const d = new Date(dateStr);
-            const key = `${monthNames[d.getMonth()]} ${d.getFullYear().toString().substring(2)}`;
-            if (monthsCount[key] !== undefined) {
-              monthsCount[key] += 1;
-            }
+        admissionsSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          // Prefer admissionDate (current schema); fall back to legacy `date` / createdAt
+          const raw =
+            data.admissionDate ||
+            data.date ||
+            (data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt) ||
+            null;
+          if (!raw) return;
+          const d = new Date(raw);
+          if (isNaN(d.getTime())) return;
+          const key = `${monthNames[d.getMonth()]} ${d.getFullYear().toString().substring(2)}`;
+          if (monthsCount[key] !== undefined) {
+            monthsCount[key] += 1;
           }
         });
 

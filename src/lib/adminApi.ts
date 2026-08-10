@@ -82,6 +82,8 @@ export type CreateAdmissionPayload = {
   notes?: string;
   /** When set, links admission back to institute inquiry and marks it confirmed */
   inquiryId?: string;
+  studentPhotoUrl?: string;
+  aadhaarUrl?: string;
 };
 
 export type CreateStaffUserPayload = {
@@ -124,6 +126,12 @@ export const adminApi = {
   createAdmission: (payload: CreateAdmissionPayload) =>
     adminFetch("/api/admin/admissions", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateAdmission: (admissionId: string, payload: Record<string, unknown>) =>
+    adminFetch(`/api/admin/admissions/${encodeURIComponent(admissionId)}`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
 

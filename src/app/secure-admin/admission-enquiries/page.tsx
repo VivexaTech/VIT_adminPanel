@@ -420,6 +420,7 @@ export default function InquiryManagementPage() {
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50/80">
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Inquiry</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Source</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Course</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Follow-up</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
@@ -429,13 +430,13 @@ export default function InquiryManagementPage() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                        <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
                           Loading...
                         </td>
                       </tr>
                     ) : paginated.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                        <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
                           No inquiries found. Create one to get started.
                         </td>
                       </tr>
@@ -454,6 +455,11 @@ export default function InquiryManagementPage() {
                               <p className="text-xs font-mono text-[#6C3CE9]">{inq.inquiryId}</p>
                               <p className="font-medium text-slate-900">{inq.fullName}</p>
                               <p className="text-xs text-slate-400">{inq.phone}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs font-semibold px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                                {inq.source || "—"}
+                              </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-600">
                               {inq.courseTitle || "—"}

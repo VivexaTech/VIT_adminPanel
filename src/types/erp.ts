@@ -57,6 +57,8 @@ export interface LeaveRequest {
   courseTitle?: string;
   batchId?: string;
   batchName?: string;
+  leaveScope?: "all" | "selected";
+  groupId?: string;
   reason: string;
   leaveDate: string;
   status: LeaveStatus;

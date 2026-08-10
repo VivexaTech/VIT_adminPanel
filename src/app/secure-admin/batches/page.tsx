@@ -67,6 +67,10 @@ export default function BatchesPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isTrainer) {
+      showToast("error", "Trainers are not allowed to edit batches.");
+      return;
+    }
     if (!modal?.name || !modal.courseId || !modal.trainerName) {
       showToast("error", "Batch name, course, and trainer are required.");
       return;
@@ -157,12 +161,12 @@ export default function BatchesPage() {
             <p className="text-sm text-slate-600">Trainer: {b.trainerName}</p>
             <p className="text-xs text-slate-400">{b.schedule?.days?.join(", ")} · {b.schedule?.startTime}–{b.schedule?.endTime}</p>
             <p className="text-xs text-slate-500">{b.studentIds?.length ?? 0} students</p>
-            <div className="flex gap-2 pt-2">
-              <button className="flex-1 py-2 rounded-xl border border-slate-200 text-sm" onClick={() => setModal(b)}>Edit</button>
-              {!isTrainer && (
+            {!isTrainer && (
+              <div className="flex gap-2 pt-2">
+                <button className="flex-1 py-2 rounded-xl border border-slate-200 text-sm" onClick={() => setModal(b)}>Edit</button>
                 <button className="py-2 px-3 rounded-xl border border-red-100 text-red-500" onClick={() => setDeleteId(b.id)}><Trash2 size={16} /></button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -197,9 +201,11 @@ export default function BatchesPage() {
                   </td>
                   <td className="px-5 py-4 text-sm">{b.studentIds?.length ?? 0}</td>
                   <td className="px-5 py-4 text-right">
-                    <button className="p-2 text-slate-400 hover:text-[#6C3CE9]" onClick={() => setModal(b)}><Edit2 size={16} /></button>
                     {!isTrainer && (
-                      <button className="p-2 text-slate-400 hover:text-red-500" onClick={() => setDeleteId(b.id)}><Trash2 size={16} /></button>
+                      <>
+                        <button className="p-2 text-slate-400 hover:text-[#6C3CE9]" onClick={() => setModal(b)}><Edit2 size={16} /></button>
+                        <button className="p-2 text-slate-400 hover:text-red-500" onClick={() => setDeleteId(b.id)}><Trash2 size={16} /></button>
+                      </>
                     )}
                   </td>
                 </tr>
@@ -210,7 +216,7 @@ export default function BatchesPage() {
         </div>
       </div>
 
-      {modal && (
+      {modal && !isTrainer && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
           <form onSubmit={handleSave} className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[92dvh] overflow-y-auto p-4 sm:p-6 shadow-xl border border-slate-200 space-y-4 my-4 sm:my-8">
             <h3 className="font-semibold text-slate-900 text-lg">{modal.id ? "Edit Batch" : "New Batch"}</h3>

@@ -3,7 +3,8 @@
 import { Suspense, useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PageTransition from "@/components/admin/PageTransition";
-import { Search, Plus, Trash2, X, Printer } from "lucide-react";
+import { Search, Plus, Trash2, X, Pencil } from "lucide-react";
+import InquiryDocUpload from "@/components/admin/inquiries/InquiryDocUpload";
 import { collection, getDocs, deleteDoc, doc, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
@@ -22,6 +23,7 @@ import type { Discount } from "@/types/marketing";
 import type { InstituteSettings } from "@/types/erp";
 import { btnPrimaryBlock, btnSecondaryBlock, inputClass, labelClass, modalFooter, pageHeader, pageHeaderActions, pageTitle, pageSubtitle } from "@/lib/theme";
 import CredentialsModal from "@/components/admin/CredentialsModal";
+import ReceiptPreviewModal from "@/components/admin/ReceiptPreviewModal";
 import { generateSecurePassword } from "@/lib/passwordUtils";
 import { RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -75,6 +77,9 @@ function AdmissionsPageInner() {
   const [feePaid, setFeePaid] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [settings, setSettings] = useState<InstituteSettings | null>(null);
+  const [editingAdmission, setEditingAdmission] = useState<Record<string, unknown> | null>(null);
+  const [studentPhotoUrl, setStudentPhotoUrl] = useState("");
+  const [aadhaarUrl, setAadhaarUrl] = useState("");
 
   const fetchAdmissions = async () => {
     try {
@@ -93,7 +98,13 @@ function AdmissionsPageInner() {
     fetchAdmissions();
     const unsubCourses = subscribeToCourses(setCourses);
     const unsubBatches = subscribeToBatches(setBatches);
-    const unsubDiscounts = subscribeToDiscounts(setDiscounts);
+    const unsubDiscounts = subscribeToDiscounts(
+      setDiscounts,
+      (err) => {
+        console.error("Discounts load failed:", err);
+        setDiscounts([]);
+      }
+    );
     const unsubSettings = subscribeToSettings(setSettings);
     return () => {
       unsubCourses();
@@ -208,7 +219,29 @@ function AdmissionsPageInner() {
     setFeePaid(0);
     setPaymentMethod("Cash");
     setStudentPassword("");
+    setEditingAdmission(null);
+    setStudentPhotoUrl("");
+    setAadhaarUrl("");
     setFormKey((k) => k + 1);
+  };
+
+  const openEditAdmission = (a: Record<string, unknown>) => {
+    setEditingAdmission(a);
+    setInquiryPrefill(null);
+    setLinkedInquiryId(null);
+    setCourseDisplayName(String(a.course || ""));
+    setDisplayNameTouched(true);
+    if (a.courseId) setSelectedCourseIds([String(a.courseId)]);
+    if (a.batchId) {
+      setCourseBatchesMap({ [String(a.courseId || "")]: String(a.batchId) });
+    }
+    setAdmissionDate(String(a.admissionDate || new Date().toISOString().slice(0, 10)));
+    setNextDueDate(String(a.nextDueDate || ""));
+    setPaymentMethod(String(a.paymentMethod || "Cash"));
+    setStudentPhotoUrl(String(a.studentPhotoUrl || ""));
+    setAadhaarUrl(String(a.aadhaarUrl || ""));
+    setFormKey((k) => k + 1);
+    setShowModal(true);
   };
 
   const toggleCourse = (courseId: string) => {
@@ -225,6 +258,53 @@ function AdmissionsPageInner() {
 
   const handleCreateAdmission = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+
+    // Edit existing admission — only genuinely required fields enforced
+    if (editingAdmission?.id) {
+      const fullName = String(formData.get("fullName") || "").trim();
+      const phone = String(formData.get("phone") || "").trim();
+      if (!fullName || !phone) {
+        showToast("error", "Full name and phone are required.");
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await adminApi.updateAdmission(String(editingAdmission.id), {
+          studentId: editingAdmission.studentId,
+          fullName,
+          parentName: formData.get("parentName") || "",
+          email: formData.get("email") || "",
+          phone,
+          qualification: formData.get("qualification") || "",
+          address: formData.get("address") || "",
+          city: formData.get("city") || "",
+          state: formData.get("state") || "",
+          admissionDate: formData.get("admissionDate") || admissionDate,
+          courseDuration: formData.get("courseDuration") || "",
+          nextDueDate: formData.get("nextDueDate") || nextDueDate,
+          course: courseDisplayName.trim() || editingAdmission.course,
+          courseId: selectedCourseIds[0] || editingAdmission.courseId,
+          batch: formData.get("batch") || editingAdmission.batch || "",
+          batchId: courseBatchesMap[selectedCourseIds[0]] || editingAdmission.batchId || "",
+          notes: formData.get("notes") || "",
+          paymentMethod,
+          studentPhotoUrl,
+          aadhaarUrl,
+        });
+        showToast("success", "Admission updated.");
+        setShowModal(false);
+        resetAdmissionForm();
+        clearInquiryLink();
+        fetchAdmissions();
+      } catch (err) {
+        showToast("error", err instanceof Error ? err.message : "Failed to update admission.");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (selectedCourses.length === 0) {
       showToast("error", "Please select at least one course.");
       return;
@@ -234,7 +314,6 @@ function AdmissionsPageInner() {
       return;
     }
     setSubmitting(true);
-    const formData = new FormData(e.currentTarget);
     const courseItems = selectedCourses.map((c) => {
       const id = c.courseId || c.id;
       const batchId = courseBatchesMap[id] || "";
@@ -279,6 +358,8 @@ function AdmissionsPageInner() {
         paymentMethod,
         notes: formData.get("notes") as string,
         inquiryId: linkedInquiryId || undefined,
+        studentPhotoUrl,
+        aadhaarUrl,
       });
       if (result.isNewStudent && result.temporaryPassword) {
         setCredentials({
@@ -297,6 +378,8 @@ function AdmissionsPageInner() {
           receiptHtml: result.receiptHtml,
           studentId: result.studentId,
         });
+      } else if (feePaid > 0) {
+        showToast("error", "Admission saved, but receipt was not returned. Try recording payment again from Fees.");
       }
       showToast(
         "success",
@@ -313,22 +396,6 @@ function AdmissionsPageInner() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handlePrintReceipt = () => {
-    if (!receiptSuccess?.receiptHtml) return;
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
-    if (!printWindow) {
-      showToast("error", "Unable to open print window. Allow pop-ups and try again.");
-      return;
-    }
-    printWindow.document.open();
-    printWindow.document.write(receiptSuccess.receiptHtml);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 400);
   };
 
   const handleDelete = async (id: string) => {
@@ -407,6 +474,14 @@ function AdmissionsPageInner() {
                   <td className="px-5 py-4 text-sm text-slate-600">{String(a.batch || "—")}</td>
                   <td className="px-5 py-4 text-sm text-slate-500">{String(a.admissionDate)}</td>
                   <td className="px-5 py-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => openEditAdmission(a)}
+                      className="p-2 text-slate-400 hover:text-[#6C3CE9]"
+                      title="Edit admission"
+                    >
+                      <Pencil size={16} />
+                    </button>
                     {user?.role === "Super Admin" && (
                       <button onClick={() => handleDelete(String(a.id))} className="p-2 text-slate-400 hover:text-red-500">
                         <Trash2 size={16} />
@@ -427,12 +502,18 @@ function AdmissionsPageInner() {
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-slate-100 shrink-0">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">
-                  {inquiryPrefill ? "Convert Inquiry to Admission" : "New Admission"}
+                  {editingAdmission
+                    ? "Edit Admission"
+                    : inquiryPrefill
+                      ? "Convert Inquiry to Admission"
+                      : "New Admission"}
                 </h2>
                 <p className="text-xs text-slate-500">
-                  {inquiryPrefill
-                    ? `Prefilling from ${inquiryPrefill.inquiryId}. Complete fee & remaining details, then confirm.`
-                    : "Creates account + enrollment if new; adds course if existing student."}
+                  {editingAdmission
+                    ? "Update missing or existing admission information. Only name and phone are required."
+                    : inquiryPrefill
+                      ? `Prefilling from ${inquiryPrefill.inquiryId}. Complete fee & remaining details, then confirm.`
+                      : "Creates account + enrollment if new; adds course if existing student."}
                 </p>
               </div>
               <button
@@ -449,10 +530,11 @@ function AdmissionsPageInner() {
               <section>
                 <h3 className="text-sm font-semibold text-[#6C3CE9] mb-3">Personal Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className={labelClass}>Full Name *</label><input name="fullName" required className={inputClass} defaultValue={inquiryPrefill?.fullName || ""} /></div>
-                  <div><label className={labelClass}>Parent Name</label><input name="parentName" className={inputClass} /></div>
-                  <div><label className={labelClass}>Personal Email *</label><input name="email" type="email" required className={inputClass} placeholder="student@gmail.com" defaultValue={inquiryPrefill?.email || ""} /></div>
-                  <div><label className={labelClass}>Mobile *</label><input name="phone" required className={inputClass} defaultValue={inquiryPrefill?.phone || ""} /></div>
+                  <div><label className={labelClass}>Full Name *</label><input name="fullName" required className={inputClass} defaultValue={String(editingAdmission?.fullName || inquiryPrefill?.fullName || "")} /></div>
+                  <div><label className={labelClass}>Parent Name</label><input name="parentName" className={inputClass} defaultValue={String(editingAdmission?.parentName || editingAdmission?.fatherName || "")} /></div>
+                  <div><label className={labelClass}>Personal Email {editingAdmission ? "" : "*"}</label><input name="email" type="email" required={!editingAdmission} className={inputClass} placeholder="student@gmail.com" defaultValue={String(editingAdmission?.email || inquiryPrefill?.email || "")} /></div>
+                  <div><label className={labelClass}>Mobile *</label><input name="phone" required className={inputClass} defaultValue={String(editingAdmission?.phone || inquiryPrefill?.phone || "")} /></div>
+                  {!editingAdmission && (
                   <div className="md:col-span-2 border border-slate-200 rounded-xl p-4 space-y-3">
                     <p className="text-sm font-medium text-slate-800">Login Password (new students)</p>
                     <label className="flex items-center gap-2 text-sm text-slate-600">
@@ -482,14 +564,31 @@ function AdmissionsPageInner() {
                       </button>
                     )}
                   </div>
+                  )}
                   <div>
                     <label className={labelClass}>Qualification</label>
                     <input
                       name="qualification"
                       className={inputClass}
-                      defaultValue={inquiryPrefill?.educationStatus || ""}
+                      defaultValue={String(editingAdmission?.qualification || inquiryPrefill?.educationStatus || "")}
                     />
                   </div>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-sm font-semibold text-[#6C3CE9] mb-3">Documents (optional)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <InquiryDocUpload
+                    label="Student Photo"
+                    value={studentPhotoUrl}
+                    onChange={setStudentPhotoUrl}
+                  />
+                  <InquiryDocUpload
+                    label="Aadhaar Card"
+                    value={aadhaarUrl}
+                    onChange={setAadhaarUrl}
+                  />
                 </div>
               </section>
               <section>
@@ -646,14 +745,18 @@ function AdmissionsPageInner() {
                     <input className={inputClass + " font-semibold"} readOnly value={`₹${payableFee.toLocaleString("en-IN")}`} />
                   </div>
                   <div>
-                    <label className={labelClass}>Fee Paid (₹)</label>
+                    <label className={labelClass}>Fee Paid (₹) *</label>
                     <input
                       type="number"
                       min={0}
                       className={inputClass}
                       value={feePaid || ""}
                       onChange={(e) => setFeePaid(Number(e.target.value) || 0)}
+                      placeholder="Enter amount received to generate receipt"
                     />
+                    <p className="text-xs text-slate-400 mt-1">
+                      Receipt generates only when Fee Paid &gt; 0.
+                    </p>
                   </div>
                   <div>
                     <label className={labelClass}>Payment Method</label>
@@ -670,16 +773,20 @@ function AdmissionsPageInner() {
                   </div>
                   {paymentMethod === "UPI" ? (
                     <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col sm:flex-row items-center gap-4">
-                      {upiQrValue ? (
+                      {upiQrValue && feePaid > 0 && settings?.upiId ? (
                         <>
                           <div className="bg-white p-3 rounded-xl border border-slate-200">
-                            <QRCodeSVG value={upiQrValue} size={140} />
+                            <QRCodeSVG value={upiQrValue} size={140} level="M" />
                           </div>
                           <div className="text-sm text-slate-700 space-y-1">
-                            <p className="font-semibold text-slate-900">Scan to pay ₹{feePaid.toLocaleString("en-IN")}</p>
-                            <p>UPI: <span className="font-mono">{settings?.upiId}</span></p>
+                            <p className="font-semibold text-slate-900">
+                              Scan to pay ₹{Number(feePaid).toLocaleString("en-IN")}
+                            </p>
+                            <p>
+                              UPI: <span className="font-mono">{settings.upiId}</span>
+                            </p>
                             <p className="text-xs text-slate-500">
-                              Payee: {settings?.upiPayeeName || settings?.instituteName}
+                              Payee: {settings.upiPayeeName || settings.instituteName}
                             </p>
                             <p className="text-xs text-slate-400">
                               Confirm payment in UPI app, then submit admission.
@@ -721,7 +828,11 @@ function AdmissionsPageInner() {
                   Cancel
                 </button>
                 <button type="submit" disabled={submitting} className={btnPrimaryBlock}>
-                  {submitting ? "Processing..." : "Confirm Admission"}
+                  {submitting
+                    ? "Processing..."
+                    : editingAdmission
+                      ? "Update Admission"
+                      : "Confirm Admission"}
                 </button>
               </div>
             </form>
@@ -738,39 +849,14 @@ function AdmissionsPageInner() {
         notice="Student should change password on first login in the mobile app."
       />
 
-      {receiptSuccess && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl border border-slate-200 overflow-hidden">
-            <div className="flex items-start justify-between p-5 border-b border-slate-100">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Admission Fee Receipt</h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  Receipt {receiptSuccess.receiptNo} was generated for student {receiptSuccess.studentId}.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setReceiptSuccess(null)}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-5 flex flex-col gap-2">
-              <button type="button" onClick={handlePrintReceipt} className={btnPrimaryBlock}>
-                <Printer size={16} /> Print Receipt
-              </button>
-              <button
-                type="button"
-                onClick={() => setReceiptSuccess(null)}
-                className="text-sm text-slate-500 py-2 hover:text-slate-800"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ReceiptPreviewModal
+        open={!!receiptSuccess}
+        title="Admission Fee Receipt"
+        receiptNo={receiptSuccess?.receiptNo || ""}
+        studentId={receiptSuccess?.studentId || ""}
+        receiptHtml={receiptSuccess?.receiptHtml || ""}
+        onClose={() => setReceiptSuccess(null)}
+      />
     </PageTransition>
   );
 }

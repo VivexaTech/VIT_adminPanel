@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySuperAdminRequest } from "@/lib/verifyAdminRequest";
+import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { generateSecurePassword, validatePasswordStrength } from "@/lib/passwordUtils";
@@ -24,7 +24,7 @@ async function nextStaffId(role: string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const performer = await verifySuperAdminRequest(request);
+    const performer = await verifyAdminNotTrainerRequest(request);
     const body = await request.json();
 
     const { fullName, email, role, password, useGeneratedPassword = true, status = "active" } = body;
@@ -36,9 +36,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Full name and email are required." }, { status: 400 });
     }
 
-    const allowedRoles = ["Admin", "Trainer", "Super Admin"];
+    const allowedRoles =
+      performer.role === "Super Admin"
+        ? ["Admin", "Trainer", "Super Admin"]
+        : ["Admin", "Trainer"];
     if (!allowedRoles.includes(role)) {
-      return NextResponse.json({ error: "Invalid role." }, { status: 400 });
+      return NextResponse.json(
+        { error: performer.role === "Super Admin" ? "Invalid role." : "Admins can only create Admin or Trainer users." },
+        { status: 400 }
+      );
     }
 
     let temporaryPassword = "";

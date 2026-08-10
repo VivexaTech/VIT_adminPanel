@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySuperAdminRequest } from "@/lib/verifyAdminRequest";
+import { verifyAdminNotTrainerRequest } from "@/lib/verifyAdminRequest";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { logServerAudit } from "@/lib/serverAudit";
@@ -10,7 +10,7 @@ type Params = { params: Promise<{ userId: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const performer = await verifySuperAdminRequest(request);
+    const performer = await verifyAdminNotTrainerRequest(request);
     const { userId } = await params;
     const { status } = await request.json();
 
@@ -24,6 +24,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const ref = db.collection("users").doc(emailKey);
     const snap = await ref.get();
     if (!snap.exists) return NextResponse.json({ error: "User not found." }, { status: 404 });
+
+    const targetRole = String(snap.data()?.role || "");
+    if (performer.role !== "Super Admin" && targetRole === "Super Admin") {
+      return NextResponse.json({ error: "Only Super Admin can modify Super Admin accounts." }, { status: 403 });
+    }
 
     const newStatus = status === "active" ? "active" : "suspended";
     await ref.update({ status: newStatus, updatedAt: FieldValue.serverTimestamp() });
@@ -47,7 +52,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const performer = await verifySuperAdminRequest(request);
+    const performer = await verifyAdminNotTrainerRequest(request);
     const { userId } = await params;
     const emailKey = decodeURIComponent(userId).toLowerCase();
 
@@ -60,6 +65,14 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     const ref = db.collection("users").doc(emailKey);
     const snap = await ref.get();
     if (!snap.exists) return NextResponse.json({ error: "User not found." }, { status: 404 });
+
+    const targetRole = String(snap.data()?.role || "");
+    if (performer.role !== "Super Admin" && (targetRole === "Super Admin" || performer.role !== "Admin")) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+    if (performer.role !== "Super Admin" && targetRole === "Super Admin") {
+      return NextResponse.json({ error: "Only Super Admin can delete Super Admin accounts." }, { status: 403 });
+    }
 
     const uid = snap.data()?.uid;
     if (uid) {

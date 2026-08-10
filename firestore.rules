@@ -79,11 +79,11 @@ service cloud.firestore {
 
     match /students/{studentId}/notifications/{notifId} {
       allow read: if isActiveAdmin() || isStudentOwner(studentId);
-      allow create: if isAdminNotTrainer();
-      allow update: if isAdminNotTrainer()
+      allow create: if isActiveAdmin();
+      allow update: if isActiveAdmin()
         || (isStudentOwner(studentId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']));
-      allow delete: if isAdminNotTrainer();
+      allow delete: if isActiveAdmin();
     }
 
     match /students/{studentId}/tests/{testId} {
@@ -112,7 +112,12 @@ service cloud.firestore {
 
     match /students/{studentId}/assignments/{assignmentId} {
       allow read: if isActiveAdmin() || isStudentOwner(studentId);
-      allow write: if isActiveAdmin();
+      allow create, delete: if isActiveAdmin();
+      allow update: if isActiveAdmin()
+        || (isStudentOwner(studentId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['status', 'fileUrl', 'submittedAt'])
+            && request.resource.data.status in ['pending', 'submitted']);
     }
 
     match /students/{studentId}/recordings/{recordingId} {
@@ -281,6 +286,17 @@ service cloud.firestore {
       allow read, write: if isActiveAdmin();
     }
 
+    match /institute_holidays/{id} {
+      allow read: if isSignedIn() || isActiveAdmin();
+      allow write: if isAdminNotTrainer();
+    }
+
+    match /course_discussions/{id} {
+      allow read: if isActiveAdmin() || isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isActiveAdmin();
+    }
+
     match /assignments/{id} {
       allow read: if isActiveAdmin() || isSignedIn();
       allow write: if isActiveAdmin();
@@ -299,7 +315,14 @@ service cloud.firestore {
     match /metadata/{id} {
       allow read: if isActiveAdmin();
       allow write: if isSuperAdmin()
-        || (isAdminNotTrainer() && id.matches('inquiry_counter_.*'));
+        || (isAdminNotTrainer() && (
+          id.matches('inquiry_counter_.*')
+          || id.matches('receipt_counter_.*')
+          || id.matches('cert_counter_.*')
+          || id.matches('student_counter_.*')
+          || id == 'global_course_counter'
+          || id == 'global_student_counter'
+        ));
     }
 
     // Default deny — no catch-all

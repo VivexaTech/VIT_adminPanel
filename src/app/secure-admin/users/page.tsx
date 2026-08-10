@@ -69,6 +69,7 @@ export default function UsersPage() {
   }, []);
 
   const isSuperAdmin = user?.role === "Super Admin";
+  const canManageUsers = isSuperAdmin || user?.role === "Admin";
 
   const handleGeneratePreview = () => {
     setPreviewPassword(generateSecurePassword(12));
@@ -77,7 +78,7 @@ export default function UsersPage() {
 
   const handleCreateUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!isSuperAdmin) return;
+    if (!canManageUsers) return;
 
     setSubmitting(true);
     const formData = new FormData(e.currentTarget);
@@ -116,7 +117,11 @@ export default function UsersPage() {
   };
 
   const handleToggleStatus = async (u: StaffUser) => {
-    if (!isSuperAdmin || u.email === user?.email) return;
+    if (!canManageUsers || u.email === user?.email) return;
+    if (!isSuperAdmin && u.role === "Super Admin") {
+      showToast("error", "Only Super Admin can modify Super Admin accounts.");
+      return;
+    }
     const newStatus = u.status === "active" ? "suspended" : "active";
     if (!window.confirm(`Change ${u.fullName}'s status to ${newStatus}?`)) return;
 
@@ -130,7 +135,11 @@ export default function UsersPage() {
   };
 
   const handleResetPassword = async (u: StaffUser) => {
-    if (!isSuperAdmin || u.email === user?.email) return;
+    if (!canManageUsers || u.email === user?.email) return;
+    if (!isSuperAdmin && u.role === "Super Admin") {
+      showToast("error", "Only Super Admin can reset Super Admin passwords.");
+      return;
+    }
     if (!window.confirm(`Reset password for ${u.fullName}? They must change it on next login.`)) return;
 
     setResettingEmail(u.email);
@@ -154,7 +163,11 @@ export default function UsersPage() {
   };
 
   const handleDelete = async (u: StaffUser) => {
-    if (!isSuperAdmin || u.email === user?.email) return;
+    if (!canManageUsers || u.email === user?.email) return;
+    if (!isSuperAdmin && u.role === "Super Admin") {
+      showToast("error", "Only Super Admin can delete Super Admin accounts.");
+      return;
+    }
     if (!window.confirm(`Permanently delete ${u.fullName}? This removes Firebase Auth and all access.`)) return;
 
     try {
@@ -179,7 +192,7 @@ export default function UsersPage() {
         <div>
           <h1 className={pageTitle}>User Management</h1>
           <p className={pageSubtitle}>
-            Super Admin creates staff accounts with Firebase Authentication. Temporary passwords require change on first login.
+            Create staff accounts with Firebase Authentication and assign roles. Temporary passwords require change on first login.
           </p>
         </div>
         <div className={pageHeaderActions}>
@@ -193,7 +206,7 @@ export default function UsersPage() {
               className={inputClass + " pl-10"}
             />
           </div>
-          {isSuperAdmin && (
+          {canManageUsers && (
             <button
               type="button"
               onClick={() => {
@@ -208,13 +221,6 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {!isSuperAdmin && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm flex items-center gap-2">
-          <Shield size={16} />
-          Only Super Admin can create, reset, or manage staff accounts.
-        </div>
-      )}
-
       <div className="glass-card rounded-2xl overflow-hidden">
         <div className="admin-table-scroll">
           <table className="w-full text-left border-collapse min-w-[720px]">
@@ -224,7 +230,7 @@ export default function UsersPage() {
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Staff ID</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Role</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
-                {isSuperAdmin && (
+                {canManageUsers && (
                   <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Actions</th>
                 )}
               </tr>
@@ -232,13 +238,13 @@ export default function UsersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 5 : 4} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={canManageUsers ? 5 : 4} className="px-6 py-8 text-center text-slate-400">
                     Loading users...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 5 : 4} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={canManageUsers ? 5 : 4} className="px-6 py-8 text-center text-slate-400">
                     No users found.
                   </td>
                 </tr>
@@ -291,13 +297,13 @@ export default function UsersPage() {
                         {u.status || "active"}
                       </span>
                     </td>
-                    {isSuperAdmin && (
+                    {canManageUsers && (
                       <td className="px-4 sm:px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleResetPassword(u)}
                             title="Reset Password"
-                            disabled={u.email === user?.email || resettingEmail === u.email}
+                            disabled={u.email === user?.email || resettingEmail === u.email || (!isSuperAdmin && u.role === "Super Admin")}
                             className="p-2 rounded-lg text-slate-400 hover:text-[#6C3CE9] hover:bg-violet-50"
                           >
                             <KeyRound size={16} />
@@ -306,7 +312,7 @@ export default function UsersPage() {
                             onClick={() => handleToggleStatus(u)}
                             title={u.status === "active" ? "Deactivate" : "Activate"}
                             className={`p-2 rounded-lg ${u.status === "active" ? "text-amber-600 hover:bg-amber-50" : "text-emerald-600 hover:bg-emerald-50"}`}
-                            disabled={u.email === user?.email}
+                            disabled={u.email === user?.email || (!isSuperAdmin && u.role === "Super Admin")}
                           >
                             <Shield size={16} />
                           </button>
@@ -314,7 +320,7 @@ export default function UsersPage() {
                             onClick={() => handleDelete(u)}
                             title="Delete User"
                             className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50"
-                            disabled={u.email === user?.email}
+                            disabled={u.email === user?.email || (!isSuperAdmin && u.role === "Super Admin")}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -329,7 +335,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {showModal && isSuperAdmin && (
+      {showModal && canManageUsers && (
         <div className={modalOverlay}>
           <div className={modalPanelSm}>
             <div className={modalHeader}>
@@ -358,7 +364,7 @@ export default function UsersPage() {
                   <select name="role" required className={selectClass} defaultValue="Admin">
                     <option value="Admin">Admin Department</option>
                     <option value="Trainer">Teaching Team (Trainer)</option>
-                    <option value="Super Admin">Super Admin</option>
+                    {isSuperAdmin && <option value="Super Admin">Super Admin</option>}
                   </select>
                 </div>
                 <div>

@@ -21,9 +21,20 @@ export async function upsertMaterial(
   material: Omit<StudyMaterial, "id" | "createdAt"> & { id?: string }
 ) {
   const id = material.id || `MAT-${Date.now()}`;
+  const isNew = !material.id;
   await setDoc(
     doc(db, "study_materials", id),
-    { ...material, createdAt: serverTimestamp() },
+    {
+      title: material.title,
+      courseId: material.courseId,
+      courseTitle: material.courseTitle || "",
+      batchId: material.batchId || "",
+      type: material.type,
+      fileUrl: material.fileUrl,
+      topicId: material.topicId || "",
+      updatedAt: serverTimestamp(),
+      ...(isNew ? { createdAt: serverTimestamp() } : {}),
+    },
     { merge: true }
   );
   return id;

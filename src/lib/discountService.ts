@@ -20,7 +20,7 @@ const clean = (values: DiscountInput) => ({
 export function subscribeToDiscounts(onData: (items: Discount[]) => void, onError?: (error: Error) => void) {
   return onSnapshot(collection(db, COLLECTION), (snap) => {
     const items = snap.docs.map((item) => ({ id: item.id, ...item.data() } as Discount));
-    items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    items.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     onData(items);
   }, (error) => onError?.(error));
 }

@@ -31,6 +31,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   [ROLES.SUPER_ADMIN]: ALL_PERMISSIONS,
   [ROLES.ADMIN]: [
     "dashboard",
+    "manage_users",
     "manage_students",
     "manage_courses",
     "manage_admissions",
@@ -39,8 +40,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "manage_tests",
     "manage_batches",
     "manage_classes",
+    "manage_attendance",
     "manage_enquiries",
     "manage_materials",
+    "manage_leaves",
     "view_reports",
     "manage_discounts",
     "manage_notices",
@@ -113,7 +116,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { name: "Leave Requests", path: "/secure-admin/leaves", permission: "manage_leaves" },
   { name: "Certificates", path: "/secure-admin/certificates", permission: "manage_certificates" },
   { name: "Inquiry Management", path: "/secure-admin/admission-enquiries", permission: "manage_enquiries" },
-  { name: "App Enquiries", path: "/secure-admin/enquiries", permission: "manage_enquiries" },
+  { name: "Holidays / Off Days", path: "/secure-admin/holidays", permission: "manage_attendance" },
   { name: "Settings", path: "/secure-admin/settings", permission: "manage_settings" },
 ];
 
@@ -122,8 +125,8 @@ export const MORE_NAV: NavItem[] = [
   { name: "Offers & Notices", path: "/secure-admin/notices", permission: "manage_notices" },
   { name: "Website Banners", path: "/secure-admin/banners", permission: "manage_banners" },
   { name: "Fee Management", path: "/secure-admin/fees", permission: "manage_fees" },
+  { name: "User Management", path: "/secure-admin/users", permission: "manage_users" },
   { name: "Approvals", path: "/secure-admin/approvals", permission: "manage_approvals", superAdminOnly: true },
-  { name: "Admin Users", path: "/secure-admin/users", permission: "manage_users", superAdminOnly: true },
   { name: "Audit Logs", path: "/secure-admin/audit-logs", permission: "view_audit_logs", superAdminOnly: true },
   { name: "Analytics", path: "/secure-admin/analytics", permission: "view_reports" },
   { name: "Verify Tool", path: "/secure-admin/verify", permission: "manage_certificates" },
