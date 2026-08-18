@@ -13,6 +13,7 @@ export async function verifyStudentRequest(request: NextRequest) {
   if (!authHeader?.startsWith("Bearer ")) {
     throw new Error("Unauthorized");
   }
+  
 
   const token = authHeader.slice(7);
   const decoded = await getAdminAuth().verifyIdToken(token);
