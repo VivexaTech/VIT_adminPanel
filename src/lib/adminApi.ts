@@ -200,6 +200,7 @@ export const adminApi = {
     startTime: string;
     endTime: string;
     recordingEnabled: boolean;
+    youtubeUrl: string;
   }) =>
     adminFetch("/api/admin/live-classes", {
       method: "POST",

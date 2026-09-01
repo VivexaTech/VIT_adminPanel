@@ -20,7 +20,9 @@ export interface AdminLiveClass {
   uiStatus: LiveClassUiStatus;
   recordingEnabled: boolean;
   recordingStatus: LiveRecordingStatus;
-  playbackMode: "secure" | "legacy";
+  playbackMode: "secure" | "legacy" | "youtube";
+  youtubeVideoId?: string;
+  youtubeUrl?: string;
   createdAt?: string;
 }
 
@@ -39,6 +41,7 @@ export interface CreateAdminLiveClassInput {
   startTime: string;
   endTime: string;
   recordingEnabled?: boolean;
+  youtubeUrl?: string;
 }
 
 export interface AdminIngestDetails {

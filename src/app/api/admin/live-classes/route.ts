@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         startTime,
         endTime,
         recordingEnabled: body.recordingEnabled !== false,
+        youtubeUrl: body.youtubeUrl ? String(body.youtubeUrl) : undefined,
       },
       admin.email
     );

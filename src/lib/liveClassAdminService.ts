@@ -1,8 +1,9 @@
 import { FieldValue, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { createLiveStream, endLiveStream, getStreamIngestDetails, getStreamStatus, isCloudflareConfigured } from "@/lib/streaming/cloudflare";
+import { endLiveStream, getStreamIngestDetails, getStreamStatus, isCloudflareConfigured } from "@/lib/streaming/cloudflare";
 import type { AdminIngestDetails, AdminLiveClass, CreateAdminLiveClassInput, LiveClassUiStatus } from "@/types/liveClass";
 import type { StreamConnectionState } from "@/lib/streaming/types";
+import { parseYouTubeVideoId, youtubeThumbnailUrl } from "@/lib/youtube";
 
 const LIVE_CLASSES = "live_classes";
 const SECRETS = "live_class_secrets";
@@ -21,7 +22,13 @@ function toIso(value: unknown): string {
   return date ? date.toISOString() : "";
 }
 
-function computeUiStatus(storedStatus: string, startTime: unknown, endTime: unknown, connection: StreamConnectionState): LiveClassUiStatus {
+function computeUiStatus(
+  storedStatus: string,
+  startTime: unknown,
+  endTime: unknown,
+  connection: StreamConnectionState,
+  playbackMode?: string
+): LiveClassUiStatus {
   if (storedStatus === "cancelled") return "cancelled";
   if (storedStatus === "completed") return "completed";
   const now = Date.now();
@@ -29,12 +36,19 @@ function computeUiStatus(storedStatus: string, startTime: unknown, endTime: unkn
   const end = parseDate(endTime)?.getTime() ?? 0;
   if (start && now < start - 10 * 60 * 1000) return "upcoming";
   if (end && now > end) return "completed";
-  if (connection === "connected") return "live";
+  if (playbackMode === "youtube" || connection === "connected") return "live";
   return "waiting_for_teacher";
 }
 
+function readPlaybackMode(data: DocumentData): AdminLiveClass["playbackMode"] {
+  if (data.playbackMode === "youtube" || data.streamingProvider === "youtube" || data.youtubeVideoId) return "youtube";
+  if (data.playbackMode === "legacy") return "legacy";
+  return "secure";
+}
+
 function fromDoc(id: string, data: DocumentData, connection: StreamConnectionState = "unknown"): AdminLiveClass {
-  const uiStatus = computeUiStatus(String(data.status ?? "upcoming"), data.startTime, data.endTime, connection);
+  const playbackMode = readPlaybackMode(data);
+  const uiStatus = computeUiStatus(String(data.status ?? "upcoming"), data.startTime, data.endTime, connection, playbackMode);
   return {
     id,
     title: String(data.title ?? "Live class"),
@@ -53,8 +67,10 @@ function fromDoc(id: string, data: DocumentData, connection: StreamConnectionSta
     status: uiStatus === "cancelled" ? "cancelled" : uiStatus === "completed" ? "completed" : uiStatus === "upcoming" ? "upcoming" : "live",
     uiStatus,
     recordingEnabled: Boolean(data.recordingEnabled),
-    recordingStatus: (data.recordingStatus ?? (data.recordingEnabled ? "processing" : "disabled")) as AdminLiveClass["recordingStatus"],
-    playbackMode: data.playbackMode === "legacy" ? "legacy" : "secure",
+    recordingStatus: (data.recordingStatus ?? (data.recordingEnabled ? (playbackMode === "youtube" ? "available" : "processing") : "disabled")) as AdminLiveClass["recordingStatus"],
+    playbackMode,
+    youtubeVideoId: data.youtubeVideoId ? String(data.youtubeVideoId) : undefined,
+    youtubeUrl: data.youtubeUrl ? String(data.youtubeUrl) : undefined,
     createdAt: toIso(data.createdAt),
   };
 }
@@ -123,13 +139,18 @@ export async function listAdminLiveClasses(actor?: {
   const db = getAdminDb();
   const snap = await db.collection(LIVE_CLASSES).orderBy("startTime", "desc").limit(200).get();
   const classes = await Promise.all(snap.docs.map(async (doc) => {
+    const data = doc.data();
+    const playbackMode = readPlaybackMode(data);
+    if (playbackMode === "youtube") {
+      return { liveClass: fromDoc(doc.id, data, "connected"), createdBy: data.createdBy ? String(data.createdBy) : undefined };
+    }
     const secret = await db.collection(SECRETS).doc(doc.id).get();
     const streamId = secret.exists ? String(secret.data()?.providerStreamId ?? "") : "";
-    const uiGuess = computeUiStatus(String(doc.data().status ?? "upcoming"), doc.data().startTime, doc.data().endTime, "unknown");
+    const uiGuess = computeUiStatus(String(data.status ?? "upcoming"), data.startTime, data.endTime, "unknown", playbackMode);
     const connection = uiGuess === "upcoming" || uiGuess === "completed" || uiGuess === "cancelled"
       ? "unknown"
       : await connectionFor(streamId || undefined);
-    return { liveClass: fromDoc(doc.id, doc.data(), connection), createdBy: doc.data().createdBy ? String(doc.data().createdBy) : undefined };
+    return { liveClass: fromDoc(doc.id, data, connection), createdBy: data.createdBy ? String(data.createdBy) : undefined };
   }));
 
   if (!actor || !isTrainerRole(actor.role)) {
@@ -152,25 +173,14 @@ export async function createAdminLiveClass(input: CreateAdminLiveClassInput, cre
   if (!input.courseId) {
     throw Object.assign(new Error("Select a course."), { status: 400 });
   }
-  if (!isCloudflareConfigured()) {
-    throw Object.assign(new Error("Cloudflare Stream is not configured on the admin panel. Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_STREAM_API_TOKEN."), { status: 503 });
+  const youtubeVideoId = parseYouTubeVideoId(input.youtubeUrl || "");
+  if (!youtubeVideoId) {
+    throw Object.assign(new Error("Enter a valid YouTube live, watch, or embed link."), { status: 400 });
   }
 
   const db = getAdminDb();
   const ref = db.collection(LIVE_CLASSES).doc();
   const recordingEnabled = input.recordingEnabled !== false;
-  const stream = await createLiveStream({ liveClassId: ref.id, title: input.title, recordingEnabled });
-
-  await db.collection(SECRETS).doc(ref.id).set({
-    liveClassId: ref.id,
-    providerStreamId: stream.streamId,
-    playbackId: stream.streamId,
-    ingestUrl: stream.ingestUrl,
-    streamKey: stream.streamKey,
-    srtUrl: stream.srtUrl ?? "",
-    srtPassphrase: stream.srtPassphrase ?? "",
-    createdAt: FieldValue.serverTimestamp(),
-  });
 
   await ref.set({
     title: input.title.trim(),
@@ -184,30 +194,25 @@ export async function createAdminLiveClass(input: CreateAdminLiveClassInput, cre
     batchName: input.batchName ?? "",
     allowedStudentIds: input.allowedStudentIds ?? [],
     description: input.description ?? "",
-    thumbnailUrl: input.thumbnailUrl ?? "",
+    thumbnailUrl: input.thumbnailUrl || youtubeThumbnailUrl(youtubeVideoId),
+    youtubeVideoId,
+    youtubeUrl: input.youtubeUrl?.trim() ?? "",
     scheduledDate: Timestamp.fromDate(start),
     startTime: Timestamp.fromDate(start),
     endTime: Timestamp.fromDate(end),
     status: "upcoming",
-    playbackMode: "secure",
-    streamingProvider: "cloudflare",
+    playbackMode: "youtube",
+    streamingProvider: "youtube",
     recordingEnabled,
-    recordingStatus: recordingEnabled ? "processing" : "disabled",
-    recordingId: "",
+    recordingStatus: recordingEnabled ? "available" : "disabled",
+    recordingId: recordingEnabled ? youtubeVideoId : "",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     createdBy,
   });
 
-  const liveClass = fromDoc(ref.id, (await ref.get()).data() ?? {}, "disconnected");
-  const ingest: AdminIngestDetails = {
-    ingestUrl: stream.ingestUrl,
-    streamKey: stream.streamKey,
-    srtUrl: stream.srtUrl,
-    srtPassphrase: stream.srtPassphrase,
-    instructions: "In OBS: Service = Custom, Server = the RTMPS URL, Stream Key = the private key. Never share this key with students.",
-  };
-  return { liveClass, ingest };
+  const liveClass = fromDoc(ref.id, (await ref.get()).data() ?? {}, "connected");
+  return { liveClass };
 }
 
 export async function getAdminIngest(id: string): Promise<AdminIngestDetails> {

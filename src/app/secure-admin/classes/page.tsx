@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageTransition from "@/components/admin/PageTransition";
 import PageHeader from "@/components/ui/PageHeader";
-import CredentialsModal from "@/components/admin/CredentialsModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/context/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -29,8 +28,8 @@ import {
   modalPanelMd,
   textareaClass,
 } from "@/lib/theme";
-import { KeyRound, Play, Plus, Square, Video, X } from "lucide-react";
-import type { AdminIngestDetails, AdminLiveClass, LiveClassUiStatus } from "@/types/liveClass";
+import { Play, Plus, Square, Video, X } from "lucide-react";
+import type { AdminLiveClass, LiveClassUiStatus } from "@/types/liveClass";
 import type { Batch, ClassSession } from "@/types/erp";
 import type { Course } from "@/types/course";
 
@@ -91,10 +90,9 @@ export default function ClassesPage() {
   const [startTime, setStartTime] = useState(defaultTimes().startTime);
   const [endTime, setEndTime] = useState(defaultTimes().endTime);
   const [description, setDescription] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [recordingEnabled, setRecordingEnabled] = useState(true);
 
-  const [ingest, setIngest] = useState<AdminIngestDetails | null>(null);
-  const [ingestTitle, setIngestTitle] = useState("OBS stream key");
   const [confirmEnd, setConfirmEnd] = useState<AdminLiveClass | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<AdminLiveClass | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -144,6 +142,7 @@ export default function ClassesPage() {
     setStartTime(times.startTime);
     setEndTime(times.endTime);
     setDescription("");
+    setYoutubeUrl("");
     setRecordingEnabled(true);
     setShowForm(true);
   };
@@ -185,9 +184,13 @@ export default function ClassesPage() {
       showToast("error", "Enter a title and select course and batch.");
       return;
     }
+    if (!youtubeUrl.trim()) {
+      showToast("error", "Paste the YouTube live or embed link.");
+      return;
+    }
     setSaving(true);
     try {
-      const result = await adminApi.createLiveClass({
+      await adminApi.createLiveClass({
         title: title.trim(),
         courseId: course?.id || courseId,
         courseTitle: course?.title || batch.courseTitle,
@@ -198,29 +201,15 @@ export default function ClassesPage() {
         startTime: new Date(startTime).toISOString(),
         endTime: new Date(endTime).toISOString(),
         recordingEnabled,
+        youtubeUrl: youtubeUrl.trim(),
       });
       setShowForm(false);
-      setIngestTitle(`OBS key — ${title.trim()}`);
-      setIngest(result.ingest);
-      showToast("success", "Live class scheduled. Use the OBS key to go live.");
+      showToast("success", "Live class scheduled. Students will watch it inside the portal.");
       await loadLiveClasses();
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Failed to schedule live class.");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const showIngest = async (item: AdminLiveClass) => {
-    setBusyId(item.id);
-    try {
-      const data = await adminApi.getLiveClassIngest(item.id);
-      setIngestTitle(`OBS key — ${item.title}`);
-      setIngest(data.ingest);
-    } catch (error) {
-      showToast("error", error instanceof Error ? error.message : "Could not load OBS credentials.");
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -271,15 +260,6 @@ export default function ClassesPage() {
     }
   };
 
-  const ingestRows = ingest
-    ? [
-        { label: "OBS Server (RTMPS)", value: ingest.ingestUrl },
-        { label: "Stream Key", value: ingest.streamKey },
-        ...(ingest.srtUrl ? [{ label: "SRT URL", value: ingest.srtUrl }] : []),
-        ...(ingest.srtPassphrase ? [{ label: "SRT Passphrase", value: ingest.srtPassphrase }] : []),
-      ]
-    : [];
-
   const tabs: { id: Tab; label: string }[] = [
     { id: "upcoming", label: `Upcoming (${counts.upcoming})` },
     { id: "live", label: `Live now (${counts.live})` },
@@ -292,7 +272,7 @@ export default function ClassesPage() {
       <PageHeader
         icon={<Video className="text-[#6C3CE9]" size={26} />}
         title="Live Classes"
-        subtitle="Schedule in-portal classes. Students watch inside the Vivexa portal — OBS keys stay with trainers only."
+        subtitle="Paste a YouTube live link. Enrolled students watch it inside the Vivexa portal classroom."
         actions={
           <button type="button" className={btnPrimary} onClick={openSchedule}>
             <Plus size={18} /> Schedule Live Class
@@ -372,16 +352,6 @@ export default function ClassesPage() {
                     )}
                   </td>
                   <td className="px-5 py-4 text-right space-x-1 whitespace-nowrap">
-                    {item.uiStatus !== "cancelled" && item.uiStatus !== "completed" && (
-                      <button
-                        type="button"
-                        className={btnSecondary + " !py-1.5 !px-3 text-sm"}
-                        disabled={busyId === item.id}
-                        onClick={() => void showIngest(item)}
-                      >
-                        <KeyRound size={14} /> OBS key
-                      </button>
-                    )}
                     {(item.uiStatus === "live" || item.uiStatus === "waiting_for_teacher") && (
                       <button
                         type="button"
@@ -411,7 +381,7 @@ export default function ClassesPage() {
       <div className="flex justify-between items-start mb-4 gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Google Meet sessions (legacy)</h2>
-          <p className="text-slate-500 text-sm mt-1">Existing Meet start/end flow. New classes should use the in-portal player above.</p>
+          <p className="text-slate-500 text-sm mt-1">Existing Meet start/end flow. New classes should use a YouTube link above.</p>
         </div>
         <button type="button" className={btnSecondary} onClick={() => setShowMeetForm(true)}>
           <Plus size={16} /> Meet session
@@ -494,7 +464,7 @@ export default function ClassesPage() {
             <div className="flex items-start justify-between px-4 sm:px-6 py-4 border-b border-slate-100">
               <div>
                 <h3 className="font-semibold text-slate-900">Schedule in-portal live class</h3>
-                <p className="text-sm text-slate-500 mt-1">Creates a Cloudflare stream. Students join from the portal player, not YouTube or Meet.</p>
+                <p className="text-sm text-slate-500 mt-1">Paste the YouTube live, watch, or embed link. Students join from the portal — they are not sent to youtube.com.</p>
               </div>
               <button type="button" className="text-slate-400 hover:text-slate-600 p-1" onClick={() => setShowForm(false)}>
                 <X size={20} />
@@ -557,6 +527,19 @@ export default function ClassesPage() {
                 </div>
               </div>
               <div>
+                <label className={labelClass}>YouTube live / embed link</label>
+                <input
+                  className={inputClass}
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/live/... or /watch?v=..."
+                  required
+                />
+                <p className="text-xs text-slate-500 mt-1.5">
+                  In YouTube Studio go live (Unlisted recommended), then paste the share or embed link here.
+                </p>
+              </div>
+              <div>
                 <label className={labelClass}>Description (optional)</label>
                 <textarea className={textareaClass} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
@@ -567,7 +550,7 @@ export default function ClassesPage() {
                   onChange={(e) => setRecordingEnabled(e.target.checked)}
                   className="rounded border-slate-300 text-[#6C3CE9] focus:ring-[#6C3CE9]"
                 />
-                Save recording for enrolled students after the class
+                Keep this YouTube video available after class for enrolled students
               </label>
             </div>
             <div className={modalFooter}>
@@ -575,7 +558,7 @@ export default function ClassesPage() {
                 Close
               </button>
               <button type="submit" className={btnPrimaryBlock} disabled={saving}>
-                {saving ? "Creating stream…" : "Schedule class"}
+                {saving ? "Scheduling…" : "Schedule class"}
               </button>
             </div>
           </form>
@@ -617,19 +600,10 @@ export default function ClassesPage() {
         </div>
       )}
 
-      <CredentialsModal
-        open={Boolean(ingest)}
-        onClose={() => setIngest(null)}
-        title={ingestTitle}
-        subtitle="Paste these into OBS. Never share them with students."
-        rows={ingestRows}
-        notice={ingest?.instructions}
-      />
-
       <ConfirmDialog
         open={Boolean(confirmEnd)}
         title="End live class?"
-        message="Students will stop receiving a live playback URL. If recording is enabled, it will process after the stream disconnects."
+        message="Students will no longer be able to join this live classroom."
         confirmLabel="End class"
         destructive
         loading={Boolean(confirmEnd && busyId === confirmEnd.id)}
