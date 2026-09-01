@@ -186,4 +186,32 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ recordingId }),
     }),
+
+  listLiveClasses: () => adminFetch("/api/admin/live-classes"),
+
+  createLiveClass: (payload: {
+    title: string;
+    courseId: string;
+    courseTitle?: string;
+    teacherName: string;
+    batchIds: string[];
+    batchName?: string;
+    description?: string;
+    startTime: string;
+    endTime: string;
+    recordingEnabled: boolean;
+  }) =>
+    adminFetch("/api/admin/live-classes", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getLiveClassIngest: (id: string) =>
+    adminFetch(`/api/admin/live-classes/${encodeURIComponent(id)}/ingest`),
+
+  endLiveClass: (id: string) =>
+    adminFetch(`/api/admin/live-classes/${encodeURIComponent(id)}/end`, { method: "POST" }),
+
+  cancelLiveClass: (id: string) =>
+    adminFetch(`/api/admin/live-classes/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
 };

@@ -29,6 +29,10 @@ export async function verifyAdminRequest(request: NextRequest) {
     email,
     role: userData.role as string,
     fullName: userData.fullName as string,
+    staffId: typeof userData.staffId === "string" ? userData.staffId : undefined,
+    assignedBatchIds: Array.isArray(userData.assignedBatchIds)
+      ? userData.assignedBatchIds.map(String)
+      : [],
     mustChangePassword: Boolean(userData.mustChangePassword),
   };
 }
