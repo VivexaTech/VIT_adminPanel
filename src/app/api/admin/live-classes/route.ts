@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
         title,
         courseId,
         courseTitle: body.courseTitle ? String(body.courseTitle) : undefined,
+        courseIds: Array.isArray(body.courseIds) ? body.courseIds.map(String).filter(Boolean) : undefined,
         subjectName: body.subjectName ? String(body.subjectName) : undefined,
         teacherId: admin.uid,
         teacherName,

@@ -179,13 +179,44 @@ export async function createAdminLiveClass(input: CreateAdminLiveClassInput, cre
   }
 
   const db = getAdminDb();
-  const ref = db.collection(LIVE_CLASSES).doc();
   const recordingEnabled = input.recordingEnabled !== false;
+  const courseSnap = await db.collection("courses").doc(input.courseId).get();
+  const courseData = courseSnap.exists ? courseSnap.data() : undefined;
+  const courseByCode = !courseSnap.exists
+    ? await db.collection("courses").where("courseId", "==", input.courseId).limit(1).get()
+    : null;
+  let resolvedCourse: { id: string; courseId: string; title: string } | null = null;
+  if (courseSnap.exists) {
+    resolvedCourse = {
+      id: courseSnap.id,
+      courseId: String(courseData?.courseId ?? ""),
+      title: String(courseData?.title ?? ""),
+    };
+  } else if (courseByCode && !courseByCode.empty) {
+    const found = courseByCode.docs[0];
+    resolvedCourse = {
+      id: found.id,
+      courseId: String(found.data()?.courseId ?? ""),
+      title: String(found.data()?.title ?? ""),
+    };
+  }
+  const resolvedCourseId = resolvedCourse?.courseId || "";
+  const resolvedTitle = resolvedCourse?.title || "";
+  const courseIds = [...new Set([
+    input.courseId,
+    ...(input.courseIds ?? []),
+    resolvedCourse?.id,
+    resolvedCourseId,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean))];
+  const courseTitle = input.courseTitle || resolvedTitle;
+
+  const ref = db.collection(LIVE_CLASSES).doc();
 
   await ref.set({
     title: input.title.trim(),
-    courseId: input.courseId,
-    courseTitle: input.courseTitle ?? "",
+    courseId: resolvedCourseId || input.courseId,
+    courseIds,
+    courseTitle,
     subjectName: input.subjectName ?? "",
     teacherId: input.teacherId ?? createdBy,
     teacherName: input.teacherName.trim(),

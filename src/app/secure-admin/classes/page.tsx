@@ -192,8 +192,9 @@ export default function ClassesPage() {
     try {
       await adminApi.createLiveClass({
         title: title.trim(),
-        courseId: course?.id || courseId,
+        courseId: course?.courseId || course?.id || courseId,
         courseTitle: course?.title || batch.courseTitle,
+        courseIds: [...new Set([course?.id, course?.courseId].filter(Boolean) as string[])],
         teacherName: teacherName.trim() || user?.fullName || "Trainer",
         batchIds: [...new Set([batch.id, batch.batchId].filter(Boolean))],
         batchName: batch.name,

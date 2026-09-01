@@ -30,6 +30,7 @@ export interface CreateAdminLiveClassInput {
   title: string;
   courseId: string;
   courseTitle?: string;
+  courseIds?: string[];
   subjectName?: string;
   teacherId?: string;
   teacherName: string;

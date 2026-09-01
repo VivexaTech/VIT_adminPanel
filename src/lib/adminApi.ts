@@ -193,6 +193,7 @@ export const adminApi = {
     title: string;
     courseId: string;
     courseTitle?: string;
+    courseIds?: string[];
     teacherName: string;
     batchIds: string[];
     batchName?: string;
