@@ -24,7 +24,7 @@ import {
   statsGrid,
 } from "@/lib/theme";
 import { syncStudentFeeMirror } from "@/lib/feeSync";
-import { validateFeePayment, getRemainingFee } from "@/lib/feeValidation";
+import { validateInstallmentPayment, getRecordRemainingFee } from "@/lib/feeValidation";
 import { buildReceiptHtml } from "@/lib/receiptTemplate";
 import { generateReceiptId } from "@/lib/firebaseUtils";
 import { notifyFeeReceipt } from "@/lib/notificationService";
@@ -242,18 +242,13 @@ export default function FeeManagementPage() {
 
     const formData = new FormData(e.currentTarget);
     const amountPaid = Number(formData.get("amount"));
-    const discount = Number(currentRecord.discount || 0);
-    const newPaidAmount = currentRecord.paidAmount + amountPaid;
-    const feeError = validateFeePayment({
-      totalFee: currentRecord.totalFee,
-      discount,
-      paidAmount: newPaidAmount,
-    });
+    const feeError = validateInstallmentPayment(currentRecord, amountPaid);
     if (feeError) {
       alert(feeError);
       return;
     }
-    const newRemainingFee = getRemainingFee(currentRecord.totalFee, discount, newPaidAmount);
+    const newPaidAmount = (Number(currentRecord.paidAmount) || 0) + amountPaid;
+    const newRemainingFee = getRecordRemainingFee(currentRecord, newPaidAmount);
     
     let paymentStatus = currentRecord.paymentStatus;
     if (newRemainingFee === 0) paymentStatus = "Paid";
@@ -311,6 +306,7 @@ export default function FeeManagementPage() {
           doc(db, "students", currentRecord.studentId || currentRecord.id)
         );
         const studentDataForReceipt = studentSnapForReceipt.data() || {};
+        const discount = Number(currentRecord.discount || 0);
         const payableFee = Number(currentRecord.totalFee) || 0;
         const originalFee =
           Number(currentRecord.originalFee) > 0
