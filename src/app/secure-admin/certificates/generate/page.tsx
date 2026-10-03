@@ -66,6 +66,37 @@ type FetchedStudent = {
   [key: string]: unknown;
 };
 
+function toISODate(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatCertDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function defaultCertData() {
+  const dateISO = toISODate();
+  return {
+    name: "Student Name",
+    course: "Course Name",
+    id: "VIT-2026-001",
+    grade: "",
+    duration: "6 Months",
+    date: formatCertDate(dateISO),
+    dateISO,
+    url: "https://vit.vivexatech.in/verify",
+  };
+}
+
 export default function CertificateGeneratorPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -85,19 +116,7 @@ export default function CertificateGeneratorPage() {
   const [eligibility, setEligibility] = useState<CertificateEligibility | null>(null);
   const [instituteSettings, setInstituteSettings] = useState<InstituteSettings>(DEFAULT_SETTINGS);
 
-  const [certData, setCertData] = useState({
-    name: "Student Name",
-    course: "Course Name",
-    id: "VIT-2026-001",
-    grade: "",
-    duration: "6 Months",
-    date: new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }),
-    url: "https://vit.vivexatech.in/verify",
-  });
+  const [certData, setCertData] = useState(defaultCertData);
 
   useEffect(() => {
     return subscribeToSettings(setInstituteSettings);
@@ -173,17 +192,15 @@ export default function CertificateGeneratorPage() {
 
       setFetchedStudent(student);
 
+      const dateISO = toISODate();
       setCertData({
         name: String(student.fullName || ""),
         course: String(student.course || ""),
         id: newCertId,
         grade: "",
         duration: String(student.courseDuration || "6 Months"),
-        date: new Date().toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        }),
+        date: formatCertDate(dateISO),
+        dateISO,
         url: `https://vit.vivexatech.in/verify?id=${newCertId}`,
       });
     } catch (error) {
@@ -302,6 +319,7 @@ export default function CertificateGeneratorPage() {
       course: certData.course,
       courseId: String(fetchedStudent?.enrolledCourse?.courseId || fetchedStudent?.courseId || ""),
       issueDate: certData.date,
+      issueDateISO: certData.dateISO,
       duration: certData.duration,
       grade: certData.grade,
       certificateImage: imageUrl,
@@ -318,6 +336,14 @@ export default function CertificateGeneratorPage() {
   const handleUploadPNG = async () => {
     if (!eligibility?.eligible) {
       showToast("error", "Student is not eligible for certificate issuance.");
+      return;
+    }
+    if (!certData.duration.trim()) {
+      showToast("error", "Please enter the course duration.");
+      return;
+    }
+    if (!certData.dateISO || !certData.date) {
+      showToast("error", "Please select the completion date.");
       return;
     }
     if (!certData.grade) {
@@ -348,7 +374,7 @@ export default function CertificateGeneratorPage() {
     <PageTransition>
       <div className="mb-6 sm:mb-8">
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1">Issue Smart Certificate</h1>
-        <p className="text-slate-500 text-sm">Fetch student details, assign grade, and upload PNG.</p>
+        <p className="text-slate-500 text-sm">Fetch student details, then edit duration, completion date, and grade before uploading.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
@@ -392,6 +418,8 @@ export default function CertificateGeneratorPage() {
                       setFetchedStudent(null);
                       setStudentIdInput("");
                       setEligibility(null);
+                      setFetchError("");
+                      setCertData(defaultCertData());
                     }}
                     className="px-4 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors flex items-center justify-center shrink-0"
                   >
@@ -417,10 +445,32 @@ export default function CertificateGeneratorPage() {
                 <label className={labelClass}>Course</label>
                 <input value={certData.course} disabled className={inputClass + " bg-slate-50 text-slate-500 cursor-not-allowed"} />
               </div>
+              <div>
+                <label className={labelClass}>Duration *</label>
+                <input
+                  type="text"
+                  value={certData.duration}
+                  onChange={(e) => setCertData({ ...certData, duration: e.target.value })}
+                  placeholder="e.g. 6 Months"
+                  className={inputClass}
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className={labelClass}>Date (Auto)</label>
-                  <input value={certData.date} disabled className={inputClass + " bg-slate-50 text-slate-500 cursor-not-allowed"} />
+                  <label className={labelClass}>Completion Date *</label>
+                  <input
+                    type="date"
+                    value={certData.dateISO}
+                    onChange={(e) => {
+                      const dateISO = e.target.value;
+                      setCertData({
+                        ...certData,
+                        dateISO,
+                        date: dateISO ? formatCertDate(dateISO) : "",
+                      });
+                    }}
+                    className={inputClass}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Grade *</label>

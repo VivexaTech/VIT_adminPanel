@@ -8,6 +8,7 @@ export interface CertificateIssueData {
   course: string;
   courseId?: string;
   issueDate: string;
+  issueDateISO?: string;
   duration: string;
   grade: string;
   certificateImage: string;
@@ -22,8 +23,17 @@ export async function studentHasCertificate(studentId: string, courseName?: stri
   return snap.docs.some((d) => d.data().course === courseName);
 }
 
+function parseIssueDate(value: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 export async function issueCertificate(data: CertificateIssueData): Promise<void> {
-  const issueDate = new Date(data.issueDate || Date.now());
+  const issueDate = parseIssueDate(data.issueDateISO || data.issueDate);
   const issueMonth = issueDate.toLocaleString("en-US", { month: "long" });
   const issueYear = String(issueDate.getFullYear());
 
